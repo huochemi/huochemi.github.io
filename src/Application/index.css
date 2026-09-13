@@ -1,0 +1,21 @@
+.website-warning {
+  margin: 10px;
+}
+
+.application .menu-btn-wrapper {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+}
+
+.application .menu-btn-wrapper {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  /**
+   * above `#mask` element (z-index:9) of baidu map, 
+   * but below `.ant-drawer` element (z-index:1000)
+   */
+  z-index: 999;
+}
