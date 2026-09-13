@@ -3,31 +3,42 @@ const path = require('path');
 const exifr = require('exifr');
 
 // 1. 配置图片目录和输出 JSON 的路径
-const IMGS_DIR = path.join(__dirname, '../data/photos'); // link to another repo: ../data/photos
+const IMGS_DIR = path.join(__dirname, '../data/photos'); // 指向 ../data/photos
 const OUTPUT_FILE = path.join(__dirname, 'src', 'Application', 'output.json');
 
 // 支持的图片扩展名
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
+const BASE_URL = 'https://huochemi.github.io/data/photos';
 
 async function processAllPhotos() {
   try {
-    console.log(`正在读取目录: ${IMGS_DIR}...`);
+    console.log(`正在读取根目录: ${IMGS_DIR}...`);
 
-    // 读取文件夹中的所有文件
-    const files = await fs.readdir(IMGS_DIR);
+    // 1. 读取根目录下的所有子项（拿到子文件夹列表）
+    const entries = await fs.readdir(IMGS_DIR, { withFileTypes: true });
 
-    // 过滤出图片文件
-    const imageFiles = files.filter((file) =>
-      ALLOWED_EXTS.has(path.extname(file).toLowerCase()),
-    );
+    // 过滤出所有子文件夹
+    const subDirs = entries.filter((entry) => entry.isDirectory());
 
-    console.log(`找到 ${imageFiles.length} 张图片，开始解析 EXIF...`);
+    console.log(`找到 ${subDirs.length} 个子文件夹，开始并行遍历图片...`);
 
-    // 使用 Promise.all 并行处理，提高大量图片时的解析速度
-    const results = (
-      await Promise.all(
+    // 2. 遍历各个子文件夹
+    const tasks = subDirs.map(async (dir) => {
+      const dirName = dir.name;
+      const dirPath = path.join(IMGS_DIR, dirName);
+
+      // 读取当前子文件夹中的所有文件
+      const files = await fs.readdir(dirPath);
+
+      // 过滤出图片文件
+      const imageFiles = files.filter((file) =>
+        ALLOWED_EXTS.has(path.extname(file).toLowerCase()),
+      );
+
+      // 并行解析当前文件夹内的图片 EXIF
+      return Promise.all(
         imageFiles.map(async (file) => {
-          const filePath = path.join(IMGS_DIR, file);
+          const filePath = path.join(dirPath, file);
 
           try {
             // 提取 GPS 信息
@@ -38,25 +49,33 @@ async function processAllPhotos() {
               gps.latitude !== undefined &&
               gps.longitude !== undefined
             ) {
-              // 拼接 Web 访问路径（如：https://huochemi.github.io/data/photos/IMG_5019.jpeg）
-              const webPath = `https://huochemi.github.io/data/photos/${file}`;
+              // 拼接包含子目录的 Web 访问路径
+              const webPath = `${BASE_URL}/${dirName}/${file}`;
 
               return {
                 lat: gps.latitude,
                 lng: gps.longitude,
                 thumbnailLink: webPath,
                 webViewLink: webPath,
+                dirName: dirName,
               };
             }
           } catch (err) {
-            console.warn(`[警告] 解析 ${file} 失败: ${err.message}`);
+            console.warn(`[警告] 解析 ${dirName}/${file} 失败: ${err.message}`);
           }
           return null; // 没有 GPS 或解析失败时返回 null
         }),
-      )
-    ).filter(Boolean); // 过滤掉 null 的数据
+      );
+    });
 
-    // 2. 将数组写入 JSON 文件
+    // 3. 等待所有子文件夹处理完毕，展平二维数组并剔除 null 项
+    const nestedResults = await Promise.all(tasks);
+    const results = nestedResults.flat().filter(Boolean);
+
+    // 确保输出目录存在
+    await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
+
+    // 4. 将数组写入 JSON 文件
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
 
     console.log(`\n 处理完成！共生成 ${results.length} 条数据。`);

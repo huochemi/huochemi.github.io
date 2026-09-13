@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 
 import { registerShortcut } from './init';
 import Map from './Map';
+import MapIcon from './MapIcon/MapIcon';
 
 // Styles for antd
 // import "antd/dist/antd.css";
@@ -18,9 +19,21 @@ export default class Application extends Component {
   };
 
   render() {
+    const renderDemo = () => {
+      return (
+        <div>
+          <MapIcon />
+        </div>
+      );
+    };
+
+    // get param e.g. ?demo=map
+    const urlParams = new URLSearchParams(window.location.search);
+    const demoParam = urlParams.get('demo');
+
     return (
       <div className="application huochemi">
-        <Map />
+        {!demoParam ? <Map /> : renderDemo()}
       </div>
     );
   }
