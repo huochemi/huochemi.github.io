@@ -25,7 +25,7 @@ async function generateThumbnail(inputPath, outputPath) {
     .rotate() // 根据 EXIF 自动纠正图片方向（解决手机拍照倒置问题）
     .resize(THUMB_SIZE, THUMB_SIZE, {
       fit: 'cover',
-      // entropy: 基于图像信息量/对比度自动智能抓取视觉焦点（提升主体如车头保留概率）
+      // entropy: 基于图像信息量/对比度自动智能抓取视觉焦点
       position: sharp.strategy.entropy,
     })
     .webp({ quality: THUMB_QUALITY })
@@ -43,13 +43,32 @@ async function processAllPhotos() {
     const subDirs = entries.filter((entry) => entry.isDirectory());
 
     console.log(
-      `找到 ${subDirs.length} 个子文件夹，开始并行遍历图片及生成缩略图...`,
+      `找到 ${subDirs.length} 个子文件夹，开始按文件夹及 index.json 校验生成数据...`,
     );
 
     // 2. 遍历各个子文件夹
     const tasks = subDirs.map(async (dir) => {
       const dirName = dir.name;
       const dirPath = path.join(IMGS_DIR, dirName);
+      const indexPath = path.join(dirPath, 'index.json');
+
+      // --- 强校验：检查 index.json 是否存在并解析 ---
+      let indexConfig;
+      try {
+        const indexContent = await fs.readFile(indexPath, 'utf-8');
+        indexConfig = JSON.parse(indexContent);
+      } catch (err) {
+        throw new Error(
+          `文件夹 [${dirName}] 缺少 index.json 或文件 JSON 格式不正确: ${err.message}`,
+        );
+      }
+
+      const coverFileName = indexConfig.index_photo;
+      if (!coverFileName) {
+        throw new Error(
+          `文件夹 [${dirName}] 的 index.json 中未指定 "index_photo"！`,
+        );
+      }
 
       // 读取当前子文件夹中的所有文件
       const files = await fs.readdir(dirPath);
@@ -61,57 +80,108 @@ async function processAllPhotos() {
           !file.includes('_thumb'),
       );
 
-      // 并行解析当前文件夹内的图片 EXIF 并生成缩略图
-      return Promise.all(
+      if (imageFiles.length === 0) {
+        throw new Error(`文件夹 [${dirName}] 下没有符合格式的图片文件！`);
+      }
+
+      // 并行处理当前文件夹内的所有图片
+      const photoResults = await Promise.all(
         imageFiles.map(async (file) => {
           const filePath = path.join(dirPath, file);
           const parsed = path.parse(file);
 
-          // 采用后缀命名：例如 DSC02780.JPG -> DSC02780_thumb.webp
           const thumbFileName = `${parsed.name}_thumb.webp`;
           const thumbPath = path.join(dirPath, thumbFileName);
 
-          try {
-            // 提取 GPS 信息
-            const gps = await exifr.gps(filePath);
+          const webViewLink = `${BASE_URL}/${dirName}/${file}`;
+          const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
 
+          let lat, lng;
+
+          // 提取 GPS 信息
+          try {
+            const gps = await exifr.gps(filePath);
             if (
               gps &&
               gps.latitude !== undefined &&
               gps.longitude !== undefined
             ) {
-              // 生成 WebP 缩略图
-              try {
-                await generateThumbnail(filePath, thumbPath);
-              } catch (thumbErr) {
-                console.warn(
-                  `[警告] 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
-                );
-              }
-
-              // 拼接 Web 访问路径
-              const webViewLink = `${BASE_URL}/${dirName}/${file}`;
-              const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
-
-              return {
-                lat: gps.latitude,
-                lng: gps.longitude,
-                thumbnailLink: thumbnailLink, // 指向 300x300 的后缀 WebP 缩略图
-                webViewLink: webViewLink, // 指向原始图片
-                dirName: dirName,
-              };
+              lat = gps.latitude;
+              lng = gps.longitude;
             }
           } catch (err) {
-            console.warn(`[警告] 解析 ${dirName}/${file} 失败: ${err.message}`);
+            console.warn(
+              `[警告] 解析 ${dirName}/${file} GPS 失败: ${err.message}`,
+            );
           }
-          return null; // 没有 GPS 或解析失败时返回 null
+
+          // 生成 WebP 缩略图
+          try {
+            await generateThumbnail(filePath, thumbPath);
+          } catch (thumbErr) {
+            console.warn(
+              `[警告] 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
+            );
+          }
+
+          return {
+            fileName: file,
+            lat,
+            lng,
+            thumbnailLink,
+            webViewLink,
+          };
         }),
       );
+
+      const validPhotos = photoResults.filter(Boolean);
+
+      // 寻找 index.json 指定的封面图
+      const primaryPhoto = validPhotos.find(
+        (p) => p.fileName === coverFileName,
+      );
+
+      if (!primaryPhoto) {
+        throw new Error(
+          `文件夹 [${dirName}] 的 index.json 指定的封面图片 "${coverFileName}" 在文件夹中未找到！`,
+        );
+      }
+
+      if (primaryPhoto.lat === undefined || primaryPhoto.lng === undefined) {
+        throw new Error(
+          `文件夹 [${dirName}] 的封面图片 "${coverFileName}" 缺失 GPS 坐标！`,
+        );
+      }
+
+      // 构造 photos 数组，每个图片带上各自的 lat / lng
+      const photos = validPhotos.map((p) => {
+        const item = {
+          thumbnailLink: p.thumbnailLink,
+          webViewLink: p.webViewLink,
+        };
+        if (p.lat !== undefined && p.lng !== undefined) {
+          item.lat = p.lat;
+          item.lng = p.lng;
+        }
+        return item;
+      });
+
+      // 返回当前文件夹聚合后的数据结构
+      return {
+        lat: primaryPhoto.lat,
+        lng: primaryPhoto.lng,
+        thumbnailLink: primaryPhoto.thumbnailLink,
+        webViewLink: primaryPhoto.webViewLink,
+        dirName: dirName,
+        ...(indexConfig.description
+          ? { description: indexConfig.description }
+          : {}),
+        photos: photos,
+      };
     });
 
-    // 3. 等待所有子文件夹处理完毕，展平二维数组并剔除 null 项
-    const nestedResults = await Promise.all(tasks);
-    const results = nestedResults.flat().filter(Boolean);
+    // 3. 等待所有子文件夹处理完毕
+    const results = await Promise.all(tasks);
 
     // 确保输出目录存在
     await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
@@ -119,10 +189,12 @@ async function processAllPhotos() {
     // 4. 将数组写入 JSON 文件
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
 
-    console.log(`\n 处理完成！共生成 ${results.length} 条数据。`);
+    console.log(`\n处理完成！共生成 ${results.length} 条文件夹数据。`);
     console.log(`结果已保存至: ${OUTPUT_FILE}`);
   } catch (error) {
-    console.error('处理失败:', error);
+    console.error(`\n[严重错误] ${error.message}`);
+    console.error('任务处理失败，脚本已终止执行。');
+    process.exit(1); // 遇到缺失 index.json 或其他错误时直接报错退出
   }
 }
 
