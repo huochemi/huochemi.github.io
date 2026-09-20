@@ -52,9 +52,13 @@ const MapDemo = () => {
               var infoWindow = new AMap.InfoWindow({
                 offset: new AMap.Pixel(0, -30),
               });
-              infoWindow.setContent(
-                `<div><a target="_blank" href="https://huochemi.github.io/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780.JPG"><img class="hcm-marker-image" src="https://huochemi.github.io/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780.JPG"></a></div>`,
-              );
+              infoWindow.setContent(`
+                <div>
+                  <a target="_blank" href="https://huochemi.github.io/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780.JPG">
+                    <img class="hcm-marker-image" src="https://huochemi.github.io/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780.JPG" />
+                  </a>
+                </div>
+              `);
               infoWindow.open(map, event.target.getPosition());
             }}
           />,

@@ -58,9 +58,13 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
           var infoWindow = new AMap.InfoWindow({
             offset: new AMap.Pixel(0, -30),
           });
-          infoWindow.setContent(
-            `<div><a target="_blank" href="${photo.webViewLink}"><img class="hcm-marker-image" src="${photo.thumbnail}"></a></div>`,
-          );
+          infoWindow.setContent(`
+            <div>
+              <a target="_blank" href="${photo.webViewLink}">
+                <img class="hcm-marker-image" src="${photo.thumbnail}">
+              </a>
+            </div>
+          `);
           infoWindow.open(mapInstance, event.target.getPosition());
         }}
       />
