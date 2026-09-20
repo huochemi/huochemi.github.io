@@ -46,7 +46,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
         content={`
           <div class="hcm-photo-pin">
             <div class="hcm-photo-wrapper">
-              <img class="hcm-marker-image" src="${photo.thumbnail}1">
+              <img class="hcm-marker-image" src="${photo.thumbnail}">
               <span class="hcm-photo-count">10</span>
             </div>
           </div>
