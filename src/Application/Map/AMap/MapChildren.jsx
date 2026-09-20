@@ -98,13 +98,28 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             var infoWindow = new AMap.InfoWindow({
               offset: new AMap.Pixel(0, -30),
             });
-            infoWindow.setContent(`
-            <div>
-              <a target="_blank" href="${photo.webViewLink}">
-                <img class="hcm-marker-image" src="${photo.thumbnailLink}">
-              </a>
-            </div>
-          `);
+            // const photoList = `
+            //   <a target="_blank" href="${photo.webViewLink}">
+            //     <img class="hcm-marker-image" src="${photo.thumbnailLink}">
+            //   </a>
+            // `;
+            const photoList =
+              localStorage.getItem('hcm_group_by') === 'photo'
+                ? `
+                <a target="_blank" href="${photo.webViewLink}">
+                  <img class="hcm-marker-image" src="${photo.thumbnailLink}">
+                </a>
+              `
+                : photo.photos
+                    .map(
+                      (p) => `
+                <a target="_blank" href="${p.webViewLink}">
+                  <img class="hcm-marker-image" src="${p.thumbnailLink}">
+                </a>
+              `,
+                    )
+                    .join('');
+            infoWindow.setContent(`<div>${photoList}</div>`);
             infoWindow.open(mapInstance, event.target.getPosition());
           }}
         />
