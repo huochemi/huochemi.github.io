@@ -43,7 +43,15 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
         key={index}
         title={`Marker ${index}`}
         position={photo.lnglat}
-        content={`<div><img class="hcm-marker-image" src="${photo.thumbnail}"></div>`}
+        content={`
+          <div class="hcm-photo-pin">
+            <div class="hcm-photo-wrapper">
+              <img class="hcm-marker-image" src="${photo.thumbnail}1">
+              <span class="hcm-photo-count">10</span>
+            </div>
+          </div>
+        `}
+        anchor="bottom-center"
         onClick={(event) => {
           console.log('Marker clicked', event);
 
