@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Drawer } from 'antd';
 import PubSub from 'pubsub-js';
 
@@ -7,66 +7,46 @@ export const OPEN_DRAWER_TOPIC = 'menudrawer.open';
 // Open or close it according to the state
 export const OPEN_CLOSE_DRAWER_TOPIC = 'menudrawer.openclose';
 
-export default class MenuDrawer extends Component {
-  state = {
-    drawerVisible: false,
-    loading: false,
-  };
+const MenuDrawer = () => {
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
-  componentDidMount() {
-    this.addSubscribers();
-  }
+  useEffect(() => {
+    const openDrawerToken = PubSub.subscribe(OPEN_DRAWER_TOPIC, () => {
+      setDrawerVisible(true);
+    });
 
-  componentWillUnmount() {
-    this.removeSubscribers();
-  }
-
-  handleDrawerClose = () => {
-    this.setVisible(false);
-  };
-
-  setVisible = (visible) => {
-    this.setState({ drawerVisible: visible });
-  };
-
-  openDrawerSubscriber = (msg) => {
-    this.setVisible(true);
-  };
-
-  openCloseDrawerSubscriber = (msg) => {
-    this.setVisible(!this.state.drawerVisible);
-  };
-
-  addSubscribers = () => {
-    this.openDrawerToken = PubSub.subscribe(
-      OPEN_DRAWER_TOPIC,
-      this.openDrawerSubscriber,
-    );
-    this.openCloseDrawerToken = PubSub.subscribe(
+    const openCloseDrawerToken = PubSub.subscribe(
       OPEN_CLOSE_DRAWER_TOPIC,
-      this.openCloseDrawerSubscriber,
+      () => {
+        // Use state callback to avoid stale closure issues
+        setDrawerVisible((prev) => !prev);
+      },
     );
+
+    // Unsubscribe both tokens on unmount
+    return () => {
+      PubSub.unsubscribe(openDrawerToken);
+      PubSub.unsubscribe(openCloseDrawerToken);
+    };
+  }, []);
+
+  const handleDrawerClose = () => {
+    setDrawerVisible(false);
   };
 
-  removeSubscribers = () => {
-    PubSub.unsubscribe(this.openDrawerToken);
-  };
+  return (
+    <div className="menu-drawer">
+      <Drawer
+        className="menu-drawer"
+        width="50%"
+        placement="left"
+        closable={false}
+        forceRender
+        open={drawerVisible}
+        onClose={handleDrawerClose}
+      />
+    </div>
+  );
+};
 
-  render() {
-    const { drawerVisible } = this.state;
-
-    return (
-      <div className="menu-drawer">
-        <Drawer
-          className="menu-drawer"
-          width={'50%'}
-          placement="left"
-          closable={false}
-          forceRender
-          open={drawerVisible}
-          onClose={this.handleDrawerClose}
-        ></Drawer>
-      </div>
-    );
-  }
-}
+export default MenuDrawer;
