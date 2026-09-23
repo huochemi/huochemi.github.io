@@ -7,3 +7,14 @@
   width: 100px;
   height: 100px;
 }
+
+/* 错误提示框样式 */
+.hcm-amap-error-notice {
+  padding: 16px;
+  background: #fff2f0;
+  color: #ff4d4f;
+  border: 1px solid #ffccc7;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 14px;
+}

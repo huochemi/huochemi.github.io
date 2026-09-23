@@ -59,6 +59,14 @@ const MapDemo = ({ defaultCenter, defaultZoom }) => {
  * window.AMap is init in original amap lib
  */
 const AMap = ({ defaultCenter, defaultZoom }) => {
+  if (!process.env.REACT_APP_AMAP_API_KEY) {
+    return (
+      <div className="hcm-amap-error-notice">
+        ⚠️ 未配置地图 API Key，请在 `.env` 文件或者 GitHub 项目设置中进行设置{' '}
+        <code>REACT_APP_AMAP_API_KEY</code>
+      </div>
+    );
+  }
   return (
     <div className="amap-wrapper">
       <APILoader version="2.0.5" akey={process.env.REACT_APP_AMAP_API_KEY}>
