@@ -1,5 +1,5 @@
-/* 抽屉遮罩 (黑色半透明 + 轻微模糊) */
-.hcm-drawer-overlay {
+/* 抽屉遮罩 */
+.drawerOverlay {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.35);
@@ -8,11 +8,11 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  animation: hcmFadeIn 0.2s ease-out;
+  animation: fadeIn 0.2s ease-out;
 }
 
 /* 抽屉主体 */
-.hcm-drawer-content {
+.drawerContent {
   background: #ffffff;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -21,12 +21,12 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-  animation: hcmSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
 /* 抽屉头部 */
-.hcm-drawer-header {
+.drawerHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,7 +34,7 @@
   border-bottom: 1px solid #f0f0f0;
 }
 
-.hcm-drawer-title {
+.drawerTitle {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -44,7 +44,7 @@
 }
 
 /* 照片数量徽标 */
-.hcm-drawer-badge {
+.drawerBadge {
   background-color: #eff6ff;
   color: #2563eb;
   font-size: 12px;
@@ -54,7 +54,7 @@
 }
 
 /* 关闭按钮 */
-.hcm-drawer-close {
+.drawerClose {
   border: none;
   background: transparent;
   font-size: 18px;
@@ -70,27 +70,27 @@
   height: 28px;
 }
 
-.hcm-drawer-close:hover {
+.drawerClose:hover {
   background-color: #f3f4f6;
   color: #111827;
 }
 
-/* 抽屉滚动内容区 */
-.hcm-drawer-body {
+/* 抽屉内容区 */
+.drawerBody {
   padding: 16px 20px;
   overflow-y: auto;
   flex: 1;
 }
 
-/* CSS Grid 响应式相册网格 */
-.hcm-photo-grid {
+/* CSS Grid 相册网格 */
+.photoGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 12px;
 }
 
 /* 照片卡片 */
-.hcm-photo-card {
+.photoCard {
   position: relative;
   aspect-ratio: 1;
   border-radius: 10px;
@@ -101,19 +101,19 @@
 }
 
 /* 缩略图 */
-.hcm-photo-thumb {
+.photoThumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
 }
 
-.hcm-photo-card:hover .hcm-photo-thumb {
+.photoCard:hover .photoThumb {
   transform: scale(1.08);
 }
 
 /* 悬停微互动遮罩 */
-.hcm-photo-mask {
+.photoMask {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
@@ -127,12 +127,12 @@
   transition: opacity 0.2s ease;
 }
 
-.hcm-photo-card:hover .hcm-photo-mask {
+.photoCard:hover .photoMask {
   opacity: 1;
 }
 
 /* 动画定义 */
-@keyframes hcmFadeIn {
+@keyframes fadeIn {
   from {
     opacity: 0;
   }
@@ -141,7 +141,7 @@
   }
 }
 
-@keyframes hcmSlideUp {
+@keyframes slideUp {
   from {
     transform: translateY(100%);
   }

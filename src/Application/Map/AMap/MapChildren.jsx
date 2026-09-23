@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Marker } from '@uiw/react-amap';
 
 import output from '../../output.json';
-import './MapChildren.css'; // 引入抽屉与相册网格样式
+import styles from './MapChildren.module.css'; // 使用 CSS Modules 引入引入抽屉与相册网格样式
 
 function flattenPhotos(data) {
   return data.flatMap((group) => {
@@ -106,21 +106,23 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       {/* 底部抽屉面板 (Bottom Sheet Drawer) */}
       {selectedGroup && (
         <div
-          className="hcm-drawer-overlay"
+          className={styles.drawerOverlay}
           onClick={() => setSelectedGroup(null)}
         >
           <div
-            className="hcm-drawer-content"
+            className={styles.drawerContent}
             onClick={(e) => e.stopPropagation()} // 阻止冒泡，避免点击抽屉内部关闭
           >
             {/* 顶部 Header */}
-            <div className="hcm-drawer-header">
-              <div className="hcm-drawer-title">
+            <div className={styles.drawerHeader}>
+              <div className={styles.drawerTitle}>
                 <span>照片列表</span>
-                <span className="hcm-drawer-badge">{photoList.length} 张</span>
+                <span className={styles.drawerBadge}>
+                  {photoList.length} 张
+                </span>
               </div>
               <button
-                className="hcm-drawer-close"
+                className={styles.drawerClose}
                 onClick={() => setSelectedGroup(null)}
                 aria-label="Close"
               >
@@ -129,23 +131,23 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             </div>
 
             {/* 照片列表展平区域 (CSS Grid 瀑布流/自适应网格) */}
-            <div className="hcm-drawer-body">
-              <div className="hcm-photo-grid">
+            <div className={styles.drawerBody}>
+              <div className={styles.photoGrid}>
                 {photoList.map((p, idx) => (
                   <a
                     key={idx}
                     href={p.webViewLink}
                     target="_blank"
                     rel="noreferrer"
-                    className="hcm-photo-card"
+                    className={styles.photoCard}
                   >
                     <img
                       src={p.thumbnailLink}
                       alt={`photo-${idx}`}
-                      className="hcm-photo-thumb"
+                      className={styles.photoThumb}
                       loading="lazy"
                     />
-                    <div className="hcm-photo-mask">
+                    <div className={styles.photoMask}>
                       <span>查看原图</span>
                     </div>
                   </a>
