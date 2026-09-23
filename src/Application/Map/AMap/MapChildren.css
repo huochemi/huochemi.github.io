@@ -1,0 +1,151 @@
+/* 抽屉遮罩 (黑色半透明 + 轻微模糊) */
+.hcm-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: hcmFadeIn 0.2s ease-out;
+}
+
+/* 抽屉主体 */
+.hcm-drawer-content {
+  background: #ffffff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  max-height: 50vh;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  animation: hcmSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+/* 抽屉头部 */
+.hcm-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.hcm-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 照片数量徽标 */
+.hcm-drawer-badge {
+  background-color: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* 关闭按钮 */
+.hcm-drawer-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  width: 28px;
+  height: 28px;
+}
+
+.hcm-drawer-close:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+/* 抽屉滚动内容区 */
+.hcm-drawer-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* CSS Grid 响应式相册网格 */
+.hcm-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+}
+
+/* 照片卡片 */
+.hcm-photo-card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #f3f4f6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  display: block;
+}
+
+/* 缩略图 */
+.hcm-photo-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.hcm-photo-card:hover .hcm-photo-thumb {
+  transform: scale(1.08);
+}
+
+/* 悬停微互动遮罩 */
+.hcm-photo-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.hcm-photo-card:hover .hcm-photo-mask {
+  opacity: 1;
+}
+
+/* 动画定义 */
+@keyframes hcmFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hcmSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
