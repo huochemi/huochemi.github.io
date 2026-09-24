@@ -241,6 +241,7 @@
 }
 
 .lightboxImageWrapper {
+  position: relative;
   max-width: 90vw;
   max-height: 85vh;
   display: flex;
@@ -255,7 +256,38 @@
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  animation: zoomIn 0.2s ease-out;
+  transition: opacity 0.25s ease-in-out;
+}
+
+/* 缩略图占位层：模糊模糊滤镜 */
+.lightboxPlaceholder {
+  filter: blur(8px);
+  transform: scale(1.02);
+}
+
+/* 大图未完全加载时不显示 */
+.loading {
+  position: absolute;
+  opacity: 0;
+}
+
+/* 大图加载完成渐变显示 */
+.loaded {
+  position: relative;
+  opacity: 1;
+  z-index: 2;
+}
+
+/* 加载转圈动画 */
+.lightboxSpinner {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  z-index: 10;
 }
 
 /* 左右导航箭头 */
@@ -292,12 +324,8 @@
   right: 24px;
 }
 
-@keyframes zoomIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
+@keyframes spin {
   to {
-    opacity: 1;
+    transform: rotate(360deg);
   }
 }

@@ -40,6 +40,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   const [selectedGroup, setSelectedGroup] = useState(null);
   // 当前打开的大图索引（null 表示未开启 Lightbox）
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  // 高清大图加载状态标志
+  const [isLargeImageLoaded, setIsLargeImageLoaded] = useState(false);
 
   useEffect(() => {
     if (!AMap || !mapInstance) return;
@@ -73,6 +75,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   // 切换上一张大图
   const handlePrevPhoto = useCallback(() => {
     if (photoList.length === 0) return;
+    setIsLargeImageLoaded(false); // 重置大图加载状态
     setLightboxIndex((prevIndex) =>
       prevIndex === 0 ? photoList.length - 1 : prevIndex - 1,
     );
@@ -81,6 +84,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   // 切换下一张大图
   const handleNextPhoto = useCallback(() => {
     if (photoList.length === 0) return;
+    setIsLargeImageLoaded(false); // 重置大图加载状态
     setLightboxIndex((prevIndex) =>
       prevIndex === photoList.length - 1 ? 0 : prevIndex + 1,
     );
@@ -89,7 +93,25 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   // 关闭大图 Lightbox
   const handleCloseLightbox = useCallback(() => {
     setLightboxIndex(null);
+    setIsLargeImageLoaded(false);
   }, []);
+
+  // 1. 预加载机制：后台静默请求当前照片的前一张与后一张大图
+  useEffect(() => {
+    if (lightboxIndex === null || photoList.length <= 1) return;
+
+    const prevIndex = (lightboxIndex - 1 + photoList.length) % photoList.length;
+    const nextIndex = (lightboxIndex + 1) % photoList.length;
+
+    [prevIndex, nextIndex].forEach((idx) => {
+      const targetPhoto = photoList[idx];
+      const targetUrl = targetPhoto?.webViewLink || targetPhoto?.thumbnailLink;
+      if (targetUrl) {
+        const img = new Image();
+        img.src = targetUrl;
+      }
+    });
+  }, [lightboxIndex, photoList]);
 
   // 监听键盘事件（左右方向键切图、Esc 键关闭）
   useEffect(() => {
@@ -110,6 +132,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [lightboxIndex, handlePrevPhoto, handleNextPhoto, handleCloseLightbox]);
+
+  const currentPhoto = photoList[lightboxIndex];
 
   return (
     <>
@@ -180,7 +204,10 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                   <div
                     key={idx}
                     className={styles.photoCard}
-                    onClick={() => setLightboxIndex(idx)}
+                    onClick={() => {
+                      setIsLargeImageLoaded(false);
+                      setLightboxIndex(idx);
+                    }}
                   >
                     <img
                       src={p.thumbnailLink}
@@ -200,7 +227,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       )}
 
       {/* 全屏大图 Lightbox 模态框 */}
-      {lightboxIndex !== null && photoList[lightboxIndex] && (
+      {lightboxIndex !== null && currentPhoto && (
         <div className={styles.lightboxOverlay} onClick={handleCloseLightbox}>
           {/* 顶部控制栏 */}
           <div
@@ -211,9 +238,9 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               {lightboxIndex + 1} / {photoList.length}
             </div>
             <div className={styles.lightboxActions}>
-              {photoList[lightboxIndex].webViewLink && (
+              {currentPhoto.webViewLink && (
                 <a
-                  href={photoList[lightboxIndex].webViewLink}
+                  href={currentPhoto.webViewLink}
                   target="_blank"
                   rel="noreferrer"
                   className={styles.lightboxLink}
@@ -247,15 +274,29 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               </button>
             )}
 
-            {/* 大图容器 */}
+            {/* 大图容器：采用渐进式加载 */}
             <div className={styles.lightboxImageWrapper}>
+              {/* 加载未完成时显示 Loading 转圈 */}
+              {!isLargeImageLoaded && (
+                <div className={styles.lightboxSpinner}></div>
+              )}
+
+              {/* 先展示基础缩略图，高清图加载完成后覆盖 */}
               <img
-                src={
-                  photoList[lightboxIndex].webViewLink ||
-                  photoList[lightboxIndex].thumbnailLink
-                }
+                src={currentPhoto.thumbnailLink}
+                alt="placeholder"
+                className={`${styles.lightboxImage} ${styles.lightboxPlaceholder}`}
+              />
+
+              {/* 真正的原图 */}
+              <img
+                key={currentPhoto.webViewLink || currentPhoto.thumbnailLink}
+                src={currentPhoto.webViewLink || currentPhoto.thumbnailLink}
                 alt={`large-photo-${lightboxIndex}`}
-                className={styles.lightboxImage}
+                className={`${styles.lightboxImage} ${
+                  isLargeImageLoaded ? styles.loaded : styles.loading
+                }`}
+                onLoad={() => setIsLargeImageLoaded(true)}
               />
             </div>
 
