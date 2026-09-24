@@ -152,7 +152,7 @@
 }
 
 /* =========================================
-   全屏 Lightbox 大图模式样式
+   全屏 Lightbox 大图模式样式 (Grid 重叠居中修正)
    ========================================= */
 
 /* 全屏黑底遮罩 */
@@ -240,18 +240,23 @@
   overflow: hidden;
 }
 
+/* 使用 CSS Grid 强制容器内所有元素精准叠放在正中央 */
 .lightboxImageWrapper {
-  position: relative;
+  display: grid;
+  place-items: center;
   max-width: 90vw;
   max-height: 85vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+}
+
+/* 核心对齐规则：让占位图、原图和加载圈全部占满第 1 行第 1 列 */
+.lightboxImageWrapper > * {
+  grid-area: 1 / 1;
 }
 
 /* 高精大图展示 */
 .lightboxImage {
-  max-width: 100%;
+  max-width: 90vw;
   max-height: 85vh;
   object-fit: contain;
   border-radius: 6px;
@@ -259,28 +264,27 @@
   transition: opacity 0.25s ease-in-out;
 }
 
-/* 缩略图占位层：模糊模糊滤镜 */
+/* 缩略图占位层：模糊滤镜 */
 .lightboxPlaceholder {
   filter: blur(8px);
   transform: scale(1.02);
+  z-index: 1;
 }
 
-/* 大图未完全加载时不显示 */
+/* 大图未完全加载时隐藏 */
 .loading {
-  position: absolute;
   opacity: 0;
+  z-index: 1;
 }
 
-/* 大图加载完成渐变显示 */
+/* 大图加载完成透明度渐变淡入，并覆盖在占位图上方 */
 .loaded {
-  position: relative;
   opacity: 1;
   z-index: 2;
 }
 
 /* 加载转圈动画 */
 .lightboxSpinner {
-  position: absolute;
   width: 40px;
   height: 40px;
   border: 3px solid rgba(255, 255, 255, 0.2);
