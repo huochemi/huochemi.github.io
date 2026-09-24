@@ -145,3 +145,5 @@ vite.config.ts.timestamp-*
 # huochemi custom
 .DS_Store
 build/
+# WorkBuddy AI assistant local data (memory, skills, session notes)
+.workbuddy/

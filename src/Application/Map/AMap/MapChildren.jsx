@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from 'react';
 import { Marker } from '@uiw/react-amap';
 
 import output from '../../output.json';
@@ -77,11 +82,14 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   }, [AMap, mapInstance, container]);
 
   // 计算当前抽屉要展示的照片列表
-  const photoList = selectedGroup
-    ? localStorage.getItem('hcm_group_by') === 'photo'
+  // 用 useMemo 缓存引用：否则每次渲染都产生新数组，
+  // 会触发 react-hooks/exhaustive-deps 警告（CI 中 warning 会升级为 error）
+  const photoList = useMemo(() => {
+    if (!selectedGroup) return [];
+    return localStorage.getItem('hcm_group_by') === 'photo'
       ? [selectedGroup]
-      : selectedGroup.photos || [selectedGroup]
-    : [];
+      : selectedGroup.photos || [selectedGroup];
+  }, [selectedGroup]);
 
   // 切换上一张大图
   const handlePrevPhoto = useCallback(() => {

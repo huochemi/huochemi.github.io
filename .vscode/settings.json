@@ -1,0 +1,15 @@
+{
+  // 声明 ESLint 需要校验的语言类型（默认已含 js/json，补齐 jsx/ts）
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  // 保存时自动修复可修复的问题（如 import 排序、引号风格）
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  // 输入时实时校验（扩展默认值，显式声明便于理解配置意图）
+  "eslint.run": "onType"
+}
