@@ -16,6 +16,30 @@ const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
 
 /**
+ * 将 EXIF 原始时间字符串规范化为 ISO 8601（无时区后缀）
+ * EXIF 原始格式为 "2024:05:01 14:32:00"（拍摄地当地时间，不含时区）
+ * 输出格式为 "2024-05-01T14:32:00"，语义：拍摄那一刻的当地墙上时间
+ * @param {string} raw EXIF 原始时间字符串
+ * @returns {string|null} 规范化后的时间字符串，解析失败返回 null
+ */
+function normalizeExifDateTime(raw) {
+  if (typeof raw !== 'string') return null;
+  // 匹配 "YYYY:MM:DD HH:mm:ss"（EXIF 标准格式，日期部分用冒号分隔）
+  const match = raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, m, d, h, min, s] = match;
+  // 校验各段数字合法，避免脏数据流入 JSON
+  if (
+    +m < 1 || +m > 12 ||
+    +d < 1 || +d > 31 ||
+    +h > 23 || +min > 59 || +s > 59
+  ) {
+    return null;
+  }
+  return `${y}-${m}-${d}T${h}:${min}:${s}`;
+}
+
+/**
  * 使用 sharp 生成 1:1 正方形 WebP 缩略图
  * @param {string} inputPath 原始图片绝对路径
  * @param {string} outputPath 缩略图保存绝对路径
@@ -96,7 +120,7 @@ async function processAllPhotos() {
           const webViewLink = `${BASE_URL}/${dirName}/${file}`;
           const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
 
-          let lat, lng;
+          let lat, lng, takenAt;
 
           // 提取 GPS 信息
           try {
@@ -115,6 +139,25 @@ async function processAllPhotos() {
             );
           }
 
+          // 提取原始拍摄时间（reviveValues: false 返回 EXIF 原始字符串，
+          // 避免 exifr 转 Date 后 JSON 序列化时被错误地偏移为 UTC 时间）
+          try {
+            const exif = await exifr.parse(filePath, {
+              pick: ['DateTimeOriginal'],
+              reviveValues: false,
+            });
+            takenAt = normalizeExifDateTime(exif?.DateTimeOriginal);
+            if (!takenAt) {
+              console.warn(
+                `[警告] ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[警告] 解析 ${dirName}/${file} 拍摄时间失败: ${err.message}`,
+            );
+          }
+
           // 生成 WebP 缩略图
           try {
             await generateThumbnail(filePath, thumbPath);
@@ -128,6 +171,7 @@ async function processAllPhotos() {
             fileName: file,
             lat,
             lng,
+            takenAt,
             thumbnailLink,
             webViewLink,
           };
@@ -153,7 +197,7 @@ async function processAllPhotos() {
         );
       }
 
-      // 构造 photos 数组，每个图片带上各自的 lat / lng
+      // 构造 photos 数组，每个图片带上各自的 lat / lng / takenAt
       const photos = validPhotos.map((p) => {
         const item = {
           thumbnailLink: p.thumbnailLink,
@@ -162,6 +206,9 @@ async function processAllPhotos() {
         if (p.lat !== undefined && p.lng !== undefined) {
           item.lat = p.lat;
           item.lng = p.lng;
+        }
+        if (p.takenAt) {
+          item.takenAt = p.takenAt;
         }
         return item;
       });
@@ -176,6 +223,7 @@ async function processAllPhotos() {
         ...(indexConfig.description
           ? { description: indexConfig.description }
           : {}),
+        ...(primaryPhoto.takenAt ? { takenAt: primaryPhoto.takenAt } : {}),
         photos: photos,
       };
     });

@@ -11,6 +11,7 @@ function flattenPhotos(data) {
         {
           lat: group.lat,
           lng: group.lng,
+          takenAt: group.takenAt,
           thumbnailLink: group.thumbnailLink,
           webViewLink: group.webViewLink,
         },
@@ -20,6 +21,7 @@ function flattenPhotos(data) {
     return group.photos.map((photo) => ({
       lat: photo.lat ?? group.lat,
       lng: photo.lng ?? group.lng,
+      takenAt: photo.takenAt,
       thumbnailLink: photo.thumbnailLink,
       webViewLink: photo.webViewLink,
     }));
@@ -28,6 +30,15 @@ function flattenPhotos(data) {
 
 const groupByFolder = output;
 const groupByPhoto = flattenPhotos(groupByFolder);
+
+// takenAt 为 ISO 8601 无时区字符串（拍摄地当地时间），直接切片展示，
+// 不经过 Date 对象以免引入时区转换
+// 完整格式 "2024-05-01 14:32"（Lightbox 胶囊用）
+const formatTakenAtFull = (takenAt) =>
+  takenAt ? takenAt.slice(0, 16).replace('T', ' ') : '';
+// 短格式 "14:32"（缩略图角标用，卡片空间有限只显示时刻）
+const formatTakenAtShort = (takenAt) =>
+  takenAt ? takenAt.slice(11, 16) : '';
 
 const allPhotos =
   localStorage.getItem('hcm_group_by') === 'photo'
@@ -215,6 +226,12 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                       className={styles.photoThumb}
                       loading="lazy"
                     />
+                    {/* 方案 B：缩略图左下角拍摄时间角标 */}
+                    {p.takenAt && (
+                      <span className={styles.photoTimeBadge}>
+                        {formatTakenAtShort(p.takenAt)}
+                      </span>
+                    )}
                     <div className={styles.photoMask}>
                       <span>查看大图</span>
                     </div>
@@ -299,6 +316,29 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                 onLoad={() => setIsLargeImageLoaded(true)}
               />
             </div>
+
+            {/* 方案 A：底部居中拍摄时间胶囊 */}
+            {currentPhoto.takenAt && (
+              <div
+                className={styles.lightboxTakenAt}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+                {formatTakenAtFull(currentPhoto.takenAt)}
+              </div>
+            )}
 
             {/* 下一张按钮 */}
             {photoList.length > 1 && (

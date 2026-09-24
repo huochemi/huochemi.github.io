@@ -132,6 +132,23 @@
   opacity: 1;
 }
 
+/* 缩略图左下角拍摄时间角标（方案 B） */
+.photoTimeBadge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  z-index: 2;
+}
+
 /* 动画定义 */
 @keyframes fadeIn {
   from {
@@ -332,4 +349,27 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Lightbox 底部居中拍摄时间胶囊（方案 A） */
+.lightboxTakenAt {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(28, 28, 30, 0.78);
+  border: 0.5px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 7px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  z-index: 2010;
+  pointer-events: none;
 }
