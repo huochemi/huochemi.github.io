@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Marker } from '@uiw/react-amap';
 
 import output from '../../output.json';
@@ -38,6 +38,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   const [photos, setPhotos] = useState([]);
   // 选中的文件夹/照片组对象
   const [selectedGroup, setSelectedGroup] = useState(null);
+  // 当前打开的大图索引（null 表示未开启 Lightbox）
+  const [lightboxIndex, setLightboxIndex] = useState(null);
 
   useEffect(() => {
     if (!AMap || !mapInstance) return;
@@ -67,6 +69,47 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       ? [selectedGroup]
       : selectedGroup.photos || [selectedGroup]
     : [];
+
+  // 切换上一张大图
+  const handlePrevPhoto = useCallback(() => {
+    if (photoList.length === 0) return;
+    setLightboxIndex((prevIndex) =>
+      prevIndex === 0 ? photoList.length - 1 : prevIndex - 1,
+    );
+  }, [photoList.length]);
+
+  // 切换下一张大图
+  const handleNextPhoto = useCallback(() => {
+    if (photoList.length === 0) return;
+    setLightboxIndex((prevIndex) =>
+      prevIndex === photoList.length - 1 ? 0 : prevIndex + 1,
+    );
+  }, [photoList.length]);
+
+  // 关闭大图 Lightbox
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxIndex(null);
+  }, []);
+
+  // 监听键盘事件（左右方向键切图、Esc 键关闭）
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        handlePrevPhoto();
+      } else if (e.key === 'ArrowRight') {
+        handleNextPhoto();
+      } else if (e.key === 'Escape') {
+        handleCloseLightbox();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [lightboxIndex, handlePrevPhoto, handleNextPhoto, handleCloseLightbox]);
 
   return (
     <>
@@ -134,12 +177,10 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             <div className={styles.drawerBody}>
               <div className={styles.photoGrid}>
                 {photoList.map((p, idx) => (
-                  <a
+                  <div
                     key={idx}
-                    href={p.webViewLink}
-                    target="_blank"
-                    rel="noreferrer"
                     className={styles.photoCard}
+                    onClick={() => setLightboxIndex(idx)}
                   >
                     <img
                       src={p.thumbnailLink}
@@ -148,12 +189,86 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                       loading="lazy"
                     />
                     <div className={styles.photoMask}>
-                      <span>查看原图</span>
+                      <span>查看大图</span>
                     </div>
-                  </a>
+                  </div>
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 全屏大图 Lightbox 模态框 */}
+      {lightboxIndex !== null && photoList[lightboxIndex] && (
+        <div className={styles.lightboxOverlay} onClick={handleCloseLightbox}>
+          {/* 顶部控制栏 */}
+          <div
+            className={styles.lightboxHeader}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.lightboxCounter}>
+              {lightboxIndex + 1} / {photoList.length}
+            </div>
+            <div className={styles.lightboxActions}>
+              {photoList[lightboxIndex].webViewLink && (
+                <a
+                  href={photoList[lightboxIndex].webViewLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.lightboxLink}
+                >
+                  查看原始文件 ↗
+                </a>
+              )}
+              <button
+                className={styles.lightboxCloseBtn}
+                onClick={handleCloseLightbox}
+                aria-label="Close Lightbox"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* 大图展示区域及切图控制 */}
+          <div
+            className={styles.lightboxBody}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 上一张按钮 */}
+            {photoList.length > 1 && (
+              <button
+                className={`${styles.lightboxNavBtn} ${styles.lightboxPrev}`}
+                onClick={handlePrevPhoto}
+                aria-label="Previous photo"
+              >
+                ‹
+              </button>
+            )}
+
+            {/* 大图容器 */}
+            <div className={styles.lightboxImageWrapper}>
+              <img
+                src={
+                  photoList[lightboxIndex].webViewLink ||
+                  photoList[lightboxIndex].thumbnailLink
+                }
+                alt={`large-photo-${lightboxIndex}`}
+                className={styles.lightboxImage}
+              />
+            </div>
+
+            {/* 下一张按钮 */}
+            {photoList.length > 1 && (
+              <button
+                className={`${styles.lightboxNavBtn} ${styles.lightboxNext}`}
+                onClick={handleNextPhoto}
+                aria-label="Next photo"
+              >
+                ›
+              </button>
+            )}
           </div>
         </div>
       )}

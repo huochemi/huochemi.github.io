@@ -98,6 +98,7 @@
   background-color: #f3f4f6;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   display: block;
+  cursor: pointer;
 }
 
 /* 缩略图 */
@@ -147,5 +148,156 @@
   }
   to {
     transform: translateY(0);
+  }
+}
+
+/* =========================================
+   全屏 Lightbox 大图模式样式
+   ========================================= */
+
+/* 全屏黑底遮罩 */
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(6px);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.2s ease-out;
+  user-select: none;
+}
+
+/* 顶部控制栏 */
+.lightboxHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  color: #ffffff;
+  z-index: 2010;
+}
+
+/* 当前进度计分板 */
+.lightboxCounter {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 12px;
+  border-radius: 16px;
+}
+
+.lightboxActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 查看原始文件链接 */
+.lightboxLink {
+  color: #60a5fa;
+  font-size: 14px;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.lightboxLink:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+/* 关闭大图按钮 */
+.lightboxCloseBtn {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 20px;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.lightboxCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+/* 大图容器主体 */
+.lightboxBody {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px 24px 16px;
+  overflow: hidden;
+}
+
+.lightboxImageWrapper {
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 高精大图展示 */
+.lightboxImage {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: zoomIn 0.2s ease-out;
+}
+
+/* 左右导航箭头 */
+.lightboxNavBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  font-size: 32px;
+  line-height: 1;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 2010;
+}
+
+.lightboxNavBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.lightboxPrev {
+  left: 24px;
+}
+
+.lightboxNext {
+  right: 24px;
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
   }
 }
