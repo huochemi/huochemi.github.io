@@ -205,6 +205,10 @@ async function processAllPhotos() {
             ) {
               lat = gps.latitude;
               lng = gps.longitude;
+            } else {
+              console.warn(
+                `[警告] ${dirName}/${file} 缺失 GPS 坐标，已跳过 lat/lng 字段（前端将回退为封面坐标）`,
+              );
             }
           } catch (err) {
             console.warn(
