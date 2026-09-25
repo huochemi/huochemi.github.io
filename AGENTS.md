@@ -15,22 +15,22 @@
 - 推送前有 pre-push 钩子（`.git/hooks/pre-push`）跑
   `eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`，有 warning 会被拒绝推送
 
-## 已知坑
+## 已知坑（摘要，细节见 docs/）
 
-- **ESLint CLI lint 目录默认只查 `.js`**，`.jsx/.ts/.tsx` 会被静默跳过，
-  必须加 `--ext .js,.jsx,.ts,.tsx`，否则检查形同虚设
-- `react-scripts build` 报 `EEXIST: file already exists, mkdir build`：
-  webpack 残留缓存问题，删除 `node_modules/.cache` 后重试即可，不要动 `build/` 本身
-- 组件内派生的数组/对象（如 `MapChildren.jsx` 的 `photoList`）若被 `useEffect`
-  依赖，必须用 `useMemo` 包住以保持引用稳定，否则触发
-  `react-hooks/exhaustive-deps` 警告（CI 中即编译失败）
-- `localStorage` 相关读取在模块顶层执行过（如 `hcm_group_by`），改动相关逻辑时
-  注意 SSR/测试环境兼容性
+- ESLint CLI lint 目录默认只查 `.js`，必须加 `--ext .js,.jsx,.ts,.tsx` → docs/toolchain.md
+- `react-scripts build` 报 EEXIST：删 `node_modules/.cache` 重试，别动 `build/` → docs/toolchain.md
+- useEffect 依赖的派生数组/对象必须用 `useMemo` 包住（CI 中 warning 即失败）→ docs/toolchain.md
+- 模块顶层有 `localStorage` 读取（如 `hcm_group_by`），注意 SSR/测试环境 → docs/toolchain.md
+- sharp 预编译包不含 HEVC 解码器，HEIC 需先经 sips 转码（已实现）→ docs/data-pipeline.md
+- `.HEIC` 不可直接作 web 分发链接（遗留，未处理）→ docs/data-pipeline.md
 
 ## 工作约定
 
 - 修改代码后先跑 `./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`
   再交付
-- `.vscode/` 与 `.gitignore`、`AGENTS.md` 应提交；`.workbuddy/` 已被 gitignore，勿提交
+- `.vscode/` 与 `.gitignore`、`AGENTS.md`、`docs/` 应提交；`.workbuddy/` 已被 gitignore，勿提交
 - 领域知识（AMap API 链接等）由用户手动维护在 `DEVELOP.md`，Agent 不要改写它；
-  Agent 积累的工具链/流程知识写入本文件
+  Agent 积累的工具链/流程知识写入 `docs/` 对应域文件（现有 `toolchain.md`、
+  `data-pipeline.md`），本文件只留一行摘要 + 指针
+- **知识回写纪律**：新坑/新知识 → 写入 `docs/` 对应域文件（无对应文件时按知识域
+  新建），AGENTS.md 同步加一行指针；不预建空文件；单文件超 200 行时按域蒸馏拆分

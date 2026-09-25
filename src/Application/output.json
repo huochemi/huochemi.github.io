@@ -255,5 +255,183 @@
         "takenAt": "2025-08-30T14:05:33"
       }
     ]
+  },
+  {
+    "lat": 34.75493055555555,
+    "lng": 113.65014722222223,
+    "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8201_thumb.webp",
+    "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8201.JPG",
+    "dirName": "郑州",
+    "description": "郑州",
+    "takenAt": "2025-07-26T16:44:02",
+    "photos": [
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/DSC06229_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/DSC06229.JPG",
+        "takenAt": "2025-07-26T13:24:09"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/DSC06230_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/DSC06230.JPG",
+        "takenAt": "2025-07-26T13:24:11"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/DSC06232_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/DSC06232.JPG",
+        "takenAt": "2025-07-26T13:27:07"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/DSC06233_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/DSC06233.JPG",
+        "takenAt": "2025-07-26T13:27:10"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8169_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8169.HEIC",
+        "lat": 34.781505555555555,
+        "lng": 113.62506944444443,
+        "takenAt": "2025-07-26T13:22:28"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8170_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8170.HEIC",
+        "lat": 34.78151666666667,
+        "lng": 113.62506111111111,
+        "takenAt": "2025-07-26T13:22:28"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8178_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8178.HEIC",
+        "lat": 34.768855555555554,
+        "lng": 113.62702222222221,
+        "takenAt": "2025-07-26T15:55:02"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8179_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8179.HEIC",
+        "lat": 34.76884444444444,
+        "lng": 113.62702222222221,
+        "takenAt": "2025-07-26T15:55:03"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8180_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8180.HEIC",
+        "lat": 34.76884166666667,
+        "lng": 113.62701388888888,
+        "takenAt": "2025-07-26T15:55:06"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8183_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8183.JPG",
+        "lat": 34.76822222222222,
+        "lng": 113.62532777777777,
+        "takenAt": "2025-07-26T16:04:43"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8184_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8184.JPG",
+        "lat": 34.76822222222222,
+        "lng": 113.62532777777777,
+        "takenAt": "2025-07-26T16:04:43"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8185_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8185.JPG",
+        "lat": 34.76822222222222,
+        "lng": 113.62532777777777,
+        "takenAt": "2025-07-26T16:04:44"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8186_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8186.JPG",
+        "lat": 34.76822222222222,
+        "lng": 113.62532777777777,
+        "takenAt": "2025-07-26T16:05:23"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8188_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8188.HEIC",
+        "lat": 34.755158333333334,
+        "lng": 113.64692777777779,
+        "takenAt": "2025-07-26T16:29:57"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8189_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8189.HEIC",
+        "lat": 34.755158333333334,
+        "lng": 113.64692777777779,
+        "takenAt": "2025-07-26T16:29:58"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8190_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8190.HEIC",
+        "lat": 34.755158333333334,
+        "lng": 113.64692777777779,
+        "takenAt": "2025-07-26T16:29:58"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8191_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8191.HEIC",
+        "lat": 34.75504166666666,
+        "lng": 113.64910833333334,
+        "takenAt": "2025-07-26T16:36:26"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8198_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8198.JPG",
+        "lat": 34.75493055555555,
+        "lng": 113.65014722222223,
+        "takenAt": "2025-07-26T16:44:00"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8199_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8199.JPG",
+        "lat": 34.75493055555555,
+        "lng": 113.65014722222223,
+        "takenAt": "2025-07-26T16:44:01"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8200_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8200.JPG",
+        "lat": 34.75493055555555,
+        "lng": 113.65014722222223,
+        "takenAt": "2025-07-26T16:44:02"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8201_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8201.JPG",
+        "lat": 34.75493055555555,
+        "lng": 113.65014722222223,
+        "takenAt": "2025-07-26T16:44:02"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8220_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8220.HEIC",
+        "lat": 34.754844444444444,
+        "lng": 113.6505138888889,
+        "takenAt": "2025-07-26T16:49:09"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8221_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8221.HEIC",
+        "lat": 34.75514166666667,
+        "lng": 113.65016944444444,
+        "takenAt": "2025-07-26T16:57:44"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8222_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8222.HEIC",
+        "lat": 34.755230555555556,
+        "lng": 113.64871111111111,
+        "takenAt": "2025-07-26T17:03:05"
+      },
+      {
+        "thumbnailLink": "https://huochemi.github.io/data/photos/郑州/IMG_8223_thumb.webp",
+        "webViewLink": "https://huochemi.github.io/data/photos/郑州/IMG_8223.HEIC",
+        "lat": 34.75523888888889,
+        "lng": 113.64869722222222,
+        "takenAt": "2025-07-26T17:03:06"
+      }
+    ]
   }
 ]

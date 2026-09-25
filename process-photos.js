@@ -1,7 +1,12 @@
 const fs = require('fs/promises');
 const path = require('path');
+const os = require('os');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const exifr = require('exifr');
 const sharp = require('sharp');
+
+const execFileAsync = promisify(execFile);
 
 // 1. 配置图片目录和输出 JSON 的路径
 const IMGS_DIR = path.join(__dirname, '../data/photos'); // 指向 ../data/photos
@@ -41,19 +46,46 @@ function normalizeExifDateTime(raw) {
 
 /**
  * 使用 sharp 生成 1:1 正方形 WebP 缩略图
+ *
+ * HEIC 特殊处理：sharp 的预编译二进制出于 HEVC 专利授权原因，
+ * 内置的 libheif 不含 HEVC 解码插件，无法解码 iPhone 拍摄的 HEIC
+ * （报错表现为 "bad seek to ..." / "heif: Decoder plugin generated
+ * an error: Unspecified (7.0)"）。升级 sharp 无法解决（任何版本都一样），
+ * 因此 HEIC 先经 macOS 原生 sips 转码为 JPEG，再交给 sharp 缩放。
+ * 注意：GPS / DateTimeOriginal 仍由 exifr 直接读取 HEIC 内嵌 EXIF，
+ * 不依赖本函数，元数据提取不受影响。
+ *
  * @param {string} inputPath 原始图片绝对路径
  * @param {string} outputPath 缩略图保存绝对路径
  */
 async function generateThumbnail(inputPath, outputPath) {
-  await sharp(inputPath)
-    .rotate() // 根据 EXIF 自动纠正图片方向（解决手机拍照倒置问题）
-    .resize(THUMB_SIZE, THUMB_SIZE, {
-      fit: 'cover',
-      // entropy: 基于图像信息量/对比度自动智能抓取视觉焦点
-      position: sharp.strategy.entropy,
-    })
-    .webp({ quality: THUMB_QUALITY })
-    .toFile(outputPath);
+  let sharpInput = inputPath;
+  let tmpJpegPath = null;
+
+  if (path.extname(inputPath).toLowerCase() === '.heic') {
+    // 唯一临时文件名，避免并行处理同名文件时互相覆盖
+    const unique = `${path.basename(inputPath, '.heic')}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    tmpJpegPath = path.join(os.tmpdir(), `${unique}.jpg`);
+    await execFileAsync('sips', ['-s', 'format', 'jpeg', inputPath, '--out', tmpJpegPath]);
+    sharpInput = tmpJpegPath;
+  }
+
+  try {
+    await sharp(sharpInput)
+      .rotate() // 根据 EXIF 自动纠正图片方向（解决手机拍照倒置问题）
+      .resize(THUMB_SIZE, THUMB_SIZE, {
+        fit: 'cover',
+        // entropy: 基于图像信息量/对比度自动智能抓取视觉焦点
+        position: sharp.strategy.entropy,
+      })
+      .webp({ quality: THUMB_QUALITY })
+      .toFile(outputPath);
+  } finally {
+    if (tmpJpegPath) {
+      // 转码产生的临时 JPEG 用完即删，失败也不影响主流程
+      await fs.unlink(tmpJpegPath).catch(() => {});
+    }
+  }
 }
 
 async function processAllPhotos() {
