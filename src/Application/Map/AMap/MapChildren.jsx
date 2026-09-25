@@ -18,6 +18,7 @@ function flattenPhotos(data) {
           lng: group.lng,
           takenAt: group.takenAt,
           thumbnailLink: group.thumbnailLink,
+          displayLink: group.displayLink,
           webViewLink: group.webViewLink,
         },
       ];
@@ -28,6 +29,7 @@ function flattenPhotos(data) {
       lng: photo.lng ?? group.lng,
       takenAt: photo.takenAt,
       thumbnailLink: photo.thumbnailLink,
+      displayLink: photo.displayLink,
       webViewLink: photo.webViewLink,
     }));
   });
@@ -124,7 +126,9 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
 
     [prevIndex, nextIndex].forEach((idx) => {
       const targetPhoto = photoList[idx];
-      const targetUrl = targetPhoto?.webViewLink || targetPhoto?.thumbnailLink;
+      // 预加载展示图（约几百 KB），而非原始文件（数 MB）
+      const targetUrl =
+        targetPhoto?.displayLink || targetPhoto?.webViewLink || targetPhoto?.thumbnailLink;
       if (targetUrl) {
         const img = new Image();
         img.src = targetUrl;
@@ -313,10 +317,18 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                 className={`${styles.lightboxImage} ${styles.lightboxPlaceholder}`}
               />
 
-              {/* 真正的原图 */}
+              {/* 真正的高清展示图（1920px WebP 展示档，原图仅作下载入口） */}
               <img
-                key={currentPhoto.webViewLink || currentPhoto.thumbnailLink}
-                src={currentPhoto.webViewLink || currentPhoto.thumbnailLink}
+                key={
+                  currentPhoto.displayLink ||
+                  currentPhoto.webViewLink ||
+                  currentPhoto.thumbnailLink
+                }
+                src={
+                  currentPhoto.displayLink ||
+                  currentPhoto.webViewLink ||
+                  currentPhoto.thumbnailLink
+                }
                 alt={`large-photo-${lightboxIndex}`}
                 className={`${styles.lightboxImage} ${
                   isLargeImageLoaded ? styles.loaded : styles.loading

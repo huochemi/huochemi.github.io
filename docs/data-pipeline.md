@@ -52,3 +52,29 @@ Chrome 从 118 起也只是把解码委托给操作系统，不自带 HEVC 解�
 - 可能的后续方案：sips 额外生成 web 浏览版（如长边 2048px JPEG），
   `webViewLink` 指向它；HEIC 原图只留本地存档（还能省 GitHub Pages 仓库体积）
 - 2026-09-25 用户决策：本次只修缩略图，此项遗留
+
+## 展示图档位 displayLink（2026-09-25 新增）
+
+### 背景
+
+Lightbox 高清图原先直接用 `webViewLink`（原始 JPG 2~5MB/张），首开大图要完整
+下载数 MB，是"打开大图很慢"的根因。
+
+### 方案
+
+在缩略图（300px）与原图之间新增展示图档位：长边限制 1920px、WebP、quality 75，
+命名 `<原文件名>_display.webp`，单张 129~390KB（约为原图 1/10）。
+
+- `process-photos.js`：`generateDisplayImage()` 与缩略图同流程（HEIC 同样走
+  sips 转码兜底），输出 `displayLink` 字段（组级封面 + 每张照片均有）
+- 前端 `MapChildren.jsx`：Lightbox 高清 `<img>` 与前后张预加载优先用
+  `displayLink`（fallback `webViewLink` → `thumbnailLink`）；
+  `flattenPhotos` 必须透传 `displayLink`，否则"按照片分组"模式退化为原图
+- "查看原始文件"入口仍指向 `webViewLink` 原图
+
+### 历史数据补齐
+
+2026-09-25 用一次性脚本从线上拉原图生成了全部 60 张 `_display.webp` 并注入
+`output.json`（展示图与缩略图/原图同目录，即流水线的 `IMGS_DIR`：
+仓库外的 `/Users/chenyang/source/huochemi/data/photos/<dirName>/`）。
+按用户现有流程随 `data/photos` 一起部署即可。

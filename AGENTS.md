@@ -23,6 +23,7 @@
 - 模块顶层有 `localStorage` 读取（如 `hcm_group_by`），注意 SSR/测试环境 → docs/toolchain.md
 - sharp 预编译包不含 HEVC 解码器，HEIC 需先经 sips 转码（已实现）→ docs/data-pipeline.md
 - `.HEIC` 不可直接作 web 分发链接（遗留，未处理）→ docs/data-pipeline.md
+- Lightbox 大图必须走 `displayLink`（1920px WebP 展示档），`webViewLink` 原图（数 MB）仅作下载入口 → docs/data-pipeline.md
 
 ## 工作约定
 

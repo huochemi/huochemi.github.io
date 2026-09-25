@@ -20,6 +20,11 @@ const BASE_URL = 'https://huochemi.github.io/data/photos';
 const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
 
+// 展示图配置：1920px 宽（网页 Lightbox 全屏展示足够），
+// 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化
+const DISPLAY_SIZE = 1920;
+const DISPLAY_QUALITY = 75;
+
 /**
  * 将 EXIF 原始时间字符串规范化为 ISO 8601（无时区后缀）
  * EXIF 原始格式为 "2024:05:01 14:32:00"（拍摄地当地时间，不含时区）
@@ -88,6 +93,39 @@ async function generateThumbnail(inputPath, outputPath) {
   }
 }
 
+/**
+ * 使用 sharp 生成 1920px 宽的 WebP 展示图（保持宽高比，仅限制长边）
+ * 供 Lightbox 大图展示使用；原图 webViewLink 仅保留为下载/原始文件入口。
+ * HEIC 处理策略与 generateThumbnail 相同：先经 sips 转码为 JPEG。
+ *
+ * @param {string} inputPath 原始图片绝对路径
+ * @param {string} outputPath 展示图保存绝对路径
+ */
+async function generateDisplayImage(inputPath, outputPath) {
+  let sharpInput = inputPath;
+  let tmpJpegPath = null;
+
+  if (path.extname(inputPath).toLowerCase() === '.heic') {
+    // 唯一临时文件名，避免并行处理同名文件时互相覆盖
+    const unique = `${path.basename(inputPath, '.heic')}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    tmpJpegPath = path.join(os.tmpdir(), `${unique}.jpg`);
+    await execFileAsync('sips', ['-s', 'format', 'jpeg', inputPath, '--out', tmpJpegPath]);
+    sharpInput = tmpJpegPath;
+  }
+
+  try {
+    await sharp(sharpInput)
+      .rotate() // 根据 EXIF 自动纠正图片方向
+      .resize({ width: DISPLAY_SIZE, withoutEnlargement: true }) // 长边限制，不放大
+      .webp({ quality: DISPLAY_QUALITY })
+      .toFile(outputPath);
+  } finally {
+    if (tmpJpegPath) {
+      await fs.unlink(tmpJpegPath).catch(() => {});
+    }
+  }
+}
+
 async function processAllPhotos() {
   try {
     console.log(`正在读取根目录: ${IMGS_DIR}...`);
@@ -148,9 +186,12 @@ async function processAllPhotos() {
 
           const thumbFileName = `${parsed.name}_thumb.webp`;
           const thumbPath = path.join(dirPath, thumbFileName);
+          const displayFileName = `${parsed.name}_display.webp`;
+          const displayPath = path.join(dirPath, displayFileName);
 
           const webViewLink = `${BASE_URL}/${dirName}/${file}`;
           const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
+          const displayLink = `${BASE_URL}/${dirName}/${displayFileName}`;
 
           let lat, lng, takenAt;
 
@@ -199,12 +240,22 @@ async function processAllPhotos() {
             );
           }
 
+          // 生成 WebP 展示图（Lightbox 大图用）
+          try {
+            await generateDisplayImage(filePath, displayPath);
+          } catch (displayErr) {
+            console.warn(
+              `[警告] 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
+            );
+          }
+
           return {
             fileName: file,
             lat,
             lng,
             takenAt,
             thumbnailLink,
+            displayLink,
             webViewLink,
           };
         }),
@@ -233,6 +284,7 @@ async function processAllPhotos() {
       const photos = validPhotos.map((p) => {
         const item = {
           thumbnailLink: p.thumbnailLink,
+          displayLink: p.displayLink,
           webViewLink: p.webViewLink,
         };
         if (p.lat !== undefined && p.lng !== undefined) {
@@ -250,6 +302,7 @@ async function processAllPhotos() {
         lat: primaryPhoto.lat,
         lng: primaryPhoto.lng,
         thumbnailLink: primaryPhoto.thumbnailLink,
+        displayLink: primaryPhoto.displayLink,
         webViewLink: primaryPhoto.webViewLink,
         dirName: dirName,
         ...(indexConfig.description
