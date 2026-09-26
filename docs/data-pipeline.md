@@ -62,6 +62,10 @@ Chrome 从 118 起也只是把解码委托给操作系统，不自带 HEVC 解�
 - **封面照片**缺 GPS：仍为硬 error（throw 退出），因为组级坐标直接来自封面，
   不能降级
 - 警告文案点明"回退为封面坐标"后果，保证警告可操作
+- **补坐标工具 `fix-gps.js`**（`npm run fix-gps [-- 文件夹]`）：交互式从同文件夹内有
+  GPS 的照片（按拍摄时间就近推荐）复制坐标写入目标原图 EXIF（exiftool
+  `-overwrite_original`，依赖 `brew install exiftool`），并排预览两张照片辅助确认；
+  修复后重跑 `npm run photos` 警告消失。依赖外部命令 exiftool，缺失即报错退出（不兜底）
 
 ## 展示图档位 displayLink（2026-09-25 新增）
 

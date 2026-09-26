@@ -32,7 +32,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "report": "react-scripts test --ci --coverage --watchAll=false && npx codecov -F unittests"
+    "report": "react-scripts test --ci --coverage --watchAll=false && npx codecov -F unittests",
+    "photos": "node process-photos.js",
+    "fix-gps": "node fix-gps.js"
   },
   "eslintConfig": {
     "extends": [
