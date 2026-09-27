@@ -14,7 +14,10 @@ const OUTPUT_FILE = path.join(__dirname, 'src', 'Application', 'output.json');
 
 // 支持的图片扩展名
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
-const BASE_URL = 'https://huochemi.github.io/data/photos';
+// 站内相对路径：生产环境站点与 data 项目站同域（huochemi.github.io），
+// 相对路径解析结果与原绝对 URL 一致；本地开发由 src/setupProxy.js 将
+// /data 挂载到本地 data 仓库，无需先提交 data repo 即可预览
+const BASE_URL = '/data/photos';
 
 // 缩略图配置：300x300 px（适配 2x/3x 高分屏）
 const THUMB_SIZE = 300;
