@@ -1,42 +1,79 @@
-# AGENTS.md
+# AGENTS.md — agent 宪法
 
-给 AI 编码助手（WorkBuddy / Codex / Cursor / Claude Code 等）的项目工作指引。
+给所有 AI 编码助手（WorkBuddy / Codex / Cursor / Claude Code 等）。
+本文件是本 repo 的行为宪法：**原则 > 流程 > 路由**，冲突时以原则为准。
+本文件自我声明：不依赖任何会话上下文即可执行；修订方式见 E1。
 
-## 项目概况
+## 原则（不可协商；每条 = 规则 + 为什么）
 
-- 技术栈：React 18 + react-scripts 5（Create React App），AMap 地图（@uiw/react-amap），部署到 GitHub Pages
-- ESLint：8.57.0，由 react-scripts 自带，配置在 `package.json` 的 `eslintConfig`（extends `react-app`）
-- 业务领域：照片地图站（`src/output.json` 为构建产物数据，勿手改）
+违反原则的"结果正确"仍然是违规。
 
-## 硬性约束
+### P1 决策留痕（ADR）
+规则：决策产物（`docs/plans/` 下的 plan、`docs/` 域文档）永不删除，生命周期用状态行
+管理（草稿/已批准/已实现/已归档）；"蒸馏知识"指提取进 docs/，原件保留并标注状态。
+为什么：决策记录回答"为什么做了 X、为什么没做 Y"（含被否决方案与出界清单），是
+review 凭据与跨会话交接契约；删了它，这些"为什么"永久丢失。
 
-- **CI 把所有 ESLint warning 当 error**（`CI=true` 时 react-scripts 的行为）。因此代码里不允许留下任何 lint warning，不要写 `eslint-disable` 压制，要修根因
-- 本地验证 CI 结果：`CI=true ./node_modules/.bin/react-scripts build`
-- 推送前有 pre-push 钩子（`.git/hooks/pre-push`）跑
-  `eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`，有 warning 会被拒绝推送
+### P2 审批门（human-in-the-loop）
+规则：两道门——
+① **plan 先行**：除用户明确说"直接做"的场景外，一切代码改动先产出计划（自包含、
+含验收标准与出界清单）放 `docs/plans/`，经用户明确批准（如"开始/做吧"）后方可
+动手；**批准前只允许只读操作**（读代码、调研、起草 plan）。是否需要 plan 由用户
+判定，agent 不确定时默认需要。
+② **破坏性操作确认**：任何删除/覆盖/恢复类操作，须用户当次明确确认（唯一例外：
+agent 本会话自建的临时文件）。
+为什么：agent 的"顺手"与"自作主张"是越界；不可逆操作的最终决定权在用户。
 
-## 已知坑（摘要，细节见 docs/）
+### P3 单一事实源（SSOT）
+规则：每类知识只有一个 canonical 位置——本文件（宪法+路由）、`docs/`（领域知识）、
+`docs/plans/`（决策记录）；agent 个人 memory 不承载 repo 规则，只留指针。
+为什么：双源必然漂移；规则活在 repo 里才对所有 agent 可见、才被版本化。
 
-- ESLint CLI lint 目录默认只查 `.js`，必须加 `--ext .js,.jsx,.ts,.tsx` → docs/toolchain.md
-- `react-scripts build` 报 EEXIST：删 `node_modules/.cache` 重试，别动 `build/` → docs/toolchain.md
-- useEffect 依赖的派生数组/对象必须用 `useMemo` 包住（CI 中 warning 即失败）→ docs/toolchain.md
-- 模块顶层有 `localStorage` 读取（如 `hcm_group_by`），注意 SSR/测试环境 → docs/toolchain.md
-- sharp 预编译包不含 HEVC 解码器，HEIC 需先经 sips 转码（已实现）→ docs/data-pipeline.md
-- `.HEIC` 不可直接作 web 分发链接（遗留，未处理）→ docs/data-pipeline.md
-- Lightbox 大图必须走 `displayLink`（1920px WebP 展示档），`webViewLink` 原图（数 MB）仅作下载入口 → docs/data-pipeline.md
-- 照片缺 GPS：普通照片构建期 warn（前端回退封面坐标），封面缺 GPS 硬 error → docs/data-pipeline.md
+### P4 自包含
+规则：本文件的每条表述必须"零上下文可执行"；新增规则进本文件时同样要求。
+为什么：任何 agent 可能零上下文进入本 repo（manifest 事实标准的定义）。
 
-## 工作约定
+### S1 数据隔离
+规则：`../data/photos` 下是原始照片（不可再生）。验证会写 EXIF/数据文件的程序时，
+复制到临时目录在副本上验证；验证命令交给用户自己跑；不做未经请求的"顺手"修复或
+副作用操作。
+为什么：不可再生数据被污染即无法还原；验证的目的本身就要求验证对象与生产数据隔离。
 
-- 修改代码后先跑 `./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`
-  再交付
-- `.vscode/` 与 `.gitignore`、`AGENTS.md`、`docs/` 应提交；`.workbuddy/` 已被 gitignore，勿提交
-- 领域知识（AMap API 链接等）由用户手动维护在 `DEVELOP.md`，Agent 不要改写它；
-  Agent 积累的工具链/流程知识写入 `docs/` 对应域文件（现有 `toolchain.md`、
-  `data-pipeline.md`），本文件只留一行摘要 + 指针
-- **工具安装与外部命令**：需要安装系统级工具（如 brew 包）而环境受限时，直接请用户在终端安装，不要自行绕过（便携版下载、非沙箱重试等都是浪费）；代码对外部命令假设已存在，预检缺失即报错退出（附安装命令），不做多重解析/兜底
-- **知识回写纪律**：新坑/新知识 → 写入 `docs/` 对应域文件（无对应文件时按知识域
-  新建），AGENTS.md 同步加一行指针；不预建空文件；单文件超 200 行时按域蒸馏拆分
-- **计划文件**：调研成本 > 执行成本的任务，先由强模型产出计划放 `docs/plans/`
-  （自包含、含验收标准与出界清单），用户 review 后可交便宜 agent 执行；完成后
-  蒸馏长期知识进 docs/ 并删除计划文件
+### S2 bug 归属分类
+规则：修 bug 前先判断触发条件是否在**用户真实使用路径**上；不在（如仅非 TTY/管道
+环境触发）则不动代码，只记录现象、改自己的测试方式。
+为什么：把测试环境的局限当 bug 修，会用无意义的改动污染用户代码。
+
+### S3 外部命令与环境
+规则：代码对外部命令假设已存在，启动预检一次，缺失即报错退出（附安装命令），不做
+多重兜底；需要安装系统级工具而环境受限时，直接请用户在终端安装，不自行绕过。
+为什么：兜底链掩盖真实依赖；自动绕过既浪费又脆弱（用户 2026-09-26 明确反馈）。
+
+### E1 进化机制
+规则：本文件通过复盘修订——复盘产出流程改进（对事不对人），改进落盘为本文件的
+修订，随 git 提交留痕；用户是唯一修订批准人。
+为什么：没有进化机制的宪法会过时；本文件的 ADR/审批门/数据隔离条款全部源自复盘。
+
+## 流程
+
+1. **改代码** → `./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`
+   再交付。不允许留任何 warning、不用 eslint-disable 压制，修根因——CI（`CI=true`）
+   把 warning 当 error，pre-push 钩子同样拒绝推送
+2. **CI 验证** → `CI=true ./node_modules/.bin/react-scripts build`；报 EEXIST 删
+   `node_modules/.cache` 重试，别动 `build/`
+3. **知识回写** → 新坑/新知识写入 `docs/` 对应域文件（无对应文件按域新建；单文件超
+   200 行按域拆分），本文件只在"路由"加一行；不预建空文件
+4. **计划文件** → 完成后状态行更新为"已实现"，保留不删（P1）
+5. **门** → 门①：写代码前，plan 是否已获用户批准（P2）；门②：任何删除/覆盖/恢复，
+   停下问用户（P2）
+
+## 路由（什么知识去哪找）
+
+- 技术栈：React 18 + react-scripts 5（CRA）、AMap（@uiw/react-amap）、GitHub Pages
+- 构建产物：`src/Application/output.json` 勿手改（由 `npm run photos` 生成）
+- 工具链坑 → `docs/toolchain.md`
+- 照片管线（EXIF/GPS、HEIC 转码、缩略图/展示图档位）→ `docs/data-pipeline.md`
+- AMap API 等领域链接 → `DEVELOP.md`（用户手动维护，agent 不改写）
+- 决策记录 → `docs/plans/`（P1）
+- 提交约定：`.vscode/`、`.gitignore`、`AGENTS.md`、`docs/` 应提交；`.workbuddy/`
+  已被 gitignore，勿提交
