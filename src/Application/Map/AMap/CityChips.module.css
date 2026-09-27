@@ -1,0 +1,64 @@
+/* 顶部城市跳转胶囊条：毛玻璃底、横向滚动，避开左上角 Menu 按钮 */
+
+.chipBar {
+  position: fixed;
+  top: 10px;
+  /* Menu 按钮 fixed top:10px left:10px，胶囊条从其右侧起排 */
+  left: 90px;
+  right: 10px;
+  /* 低于 .ant-drawer (z-index:1000)，高于地图画布 */
+  z-index: 998;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  /* 隐藏横向滚动条（保留触控板/触屏滚动），两端渐隐提示还有更多 */
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12px,
+    #000 calc(100% - 12px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12px,
+    #000 calc(100% - 12px),
+    transparent
+  );
+}
+
+.chipBar::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* 选中高亮：与 antd v5 主色一致 */
+.chipActive {
+  background: #1677ff;
+  color: #fff;
+}
+
+.chipActive:hover {
+  background: #4096ff;
+}

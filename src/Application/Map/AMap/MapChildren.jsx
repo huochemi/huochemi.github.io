@@ -8,6 +8,7 @@ import { Marker } from '@uiw/react-amap';
 
 import output from '../../output.json';
 import styles from './MapChildren.module.css'; // 使用 CSS Modules 引入引入抽屉与相册网格样式
+import CityChips from './CityChips';
 
 function flattenPhotos(data) {
   return data.flatMap((group) => {
@@ -160,6 +161,9 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
 
   return (
     <>
+      {/* 顶部城市跳转胶囊条（数据源 src/Application/cities.js，用户手动维护） */}
+      <CityChips mapInstance={mapInstance} />
+
       {/* 渲染地图 Marker */}
       {photos.map((photo, index) => {
         const photoCount =
