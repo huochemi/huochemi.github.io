@@ -11,10 +11,36 @@
 
 ## react-scripts build 报 `EEXIST: file already exists, mkdir build`
 
-webpack 残留缓存问题。
+**真因（2026-09-27 深夜实验钉死）：agent 环境的权限拦截层（broker） deny
+了对 `build/` 的非递归 mkdir，并合成 Node 格式的 EEXIST 错误，不是
+webpack 缓存问题。**"删 `node_modules/.cache` 可修"是假相关（当晚
+缓存删除与构建成功碰巧先后发生），此前归因错误。
 
-- 解法：删除 `node_modules/.cache` 后重试
-- 注意：不要动 `build/` 目录本身
+证据链（均可复现）：
+
+- agent shell 内 `readdirSync('build')` 正常——目录存在且可读，
+  "目录已存在"本身不是问题
+- `fs.mkdirSync('build')`（非递归）→ 报 code `CODEBUDDY_BROKER_DENY`，
+  message 伪装成 Node 原生 `EEXIST: file already exists, mkdir .../build`；
+  而 `fs.mkdirSync('build', {recursive: true})` → 通过
+- webpack 5 `lib/util/fs.js` 的 `mkdirp` 用非递归 mkdir + 以
+  `err.code === 'EEXIST'` 判断后自愈；broker 伪造错误的 code 不是
+  `EEXIST` → 自愈失效 → 错误上抛 → build 失败
+- 用户终端无 broker：真实 EEXIST 被 mkdirp 正常自愈 → 成功（这就是
+  "用户跑成功、agent 跑失败"的全部原因）
+- 已排除：node 版本（v20 / v22 都失败）、缓存状态（用户在未删缓存的
+  情况下成功）。注意：拦截层与 bash 沙箱是两套机制——本机
+  `sandbox.enabled` 未设置（默认 false，沙箱本来就没开），拦截来自
+  文件权限规则层（settings.json 的 orderedRules + 内置安全检查）
+
+结论与处理：
+
+- `build/` 已存在时，agent 环境跑 CI build 必失败。不是项目 bug
+  （S2：触发条件不在用户真实使用路径，用户终端永不触发）
+- 门禁操作：`build/` 已存在时，CI build 门禁交由用户在终端执行；
+  `build/` 不存在时 agent 可自行跑（mkdir 会被放行）
+- AGENTS.md 流程 2 的"报 EEXIST 删 node_modules/.cache 重试"按 E1
+  走修订流程更正
 
 ## 派生数组/对象被 useEffect 依赖时必须用 `useMemo` 包住
 
