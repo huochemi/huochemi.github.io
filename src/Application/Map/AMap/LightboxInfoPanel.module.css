@@ -1,0 +1,134 @@
+/* =========================================
+   Lightbox 右侧信息面板（方案 B）
+   桌面端：右侧竖向滑入面板；移动端：底部弹出 bottom sheet
+   ========================================= */
+
+/* 面板本体：毛玻璃深色半透明，与 Lightbox 现有体系一致 */
+.panel {
+  position: absolute;
+  top: 72px; /* 顶栏（16px padding + 36px 按钮）下方 */
+  right: 0;
+  bottom: 0;
+  width: 300px;
+  max-width: 85vw;
+  background: rgba(28, 28, 30, 0.78);
+  border-left: 0.5px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  padding: 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  transform: translateX(100%); /* 默认收起：滑出屏幕右侧 */
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2020;
+}
+
+.panelOpen {
+  transform: translateX(0);
+}
+
+/* 信息分区 */
+.section {
+  margin-bottom: 22px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+/* 分区标签 */
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+/* 值文本 */
+.value {
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+/* 坐标行：数值 + 复制按钮 */
+.coordRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 复制按钮 */
+.copyBtn {
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.copyBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 高德地图链接 */
+.amapLink {
+  display: inline-block;
+  margin-top: 8px;
+  color: #60a5fa;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.amapLink:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+/* 坐标转换中/失败提示 */
+.coordHint {
+  display: inline-block;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+}
+
+/* 文件夹描述 */
+.desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 移动端：改为底部弹出的 bottom sheet，不遮整张大图 */
+@media (max-width: 640px) {
+  .panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    max-height: 45vh;
+    border-left: none;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.25);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    transform: translateY(100%); /* 默认收起：滑出屏幕底部 */
+  }
+
+  .panelOpen {
+    transform: translateY(0);
+  }
+}

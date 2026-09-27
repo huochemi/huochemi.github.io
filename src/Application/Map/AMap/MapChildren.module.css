@@ -225,6 +225,32 @@
   text-decoration: underline;
 }
 
+/* 信息面板切换按钮（"ⓘ"） */
+.lightboxInfoBtn {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.lightboxInfoBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+/* 面板展开时的按钮激活态 */
+.lightboxInfoBtnActive,
+.lightboxInfoBtnActive:hover {
+  background: #60a5fa;
+}
+
 /* 关闭大图按钮 */
 .lightboxCloseBtn {
   border: none;

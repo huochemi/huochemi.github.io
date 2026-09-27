@@ -9,6 +9,7 @@ import { Marker } from '@uiw/react-amap';
 import output from '../../output.json';
 import styles from './MapChildren.module.css'; // 使用 CSS Modules 引入引入抽屉与相册网格样式
 import CityChips from './CityChips';
+import LightboxInfoPanel from './LightboxInfoPanel';
 
 function flattenPhotos(data) {
   return data.flatMap((group) => {
@@ -21,6 +22,7 @@ function flattenPhotos(data) {
           thumbnailLink: group.thumbnailLink,
           displayLink: group.displayLink,
           webViewLink: group.webViewLink,
+          dirName: group.dirName,
         },
       ];
     }
@@ -32,6 +34,7 @@ function flattenPhotos(data) {
       thumbnailLink: photo.thumbnailLink,
       displayLink: photo.displayLink,
       webViewLink: photo.webViewLink,
+      dirName: group.dirName,
     }));
   });
 }
@@ -61,6 +64,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   const [lightboxIndex, setLightboxIndex] = useState(null);
   // 高清大图加载状态标志
   const [isLargeImageLoaded, setIsLargeImageLoaded] = useState(false);
+  // Lightbox 信息面板展开态（"ⓘ" 按钮控制，默认收起）
+  const [infoOpen, setInfoOpen] = useState(false);
 
   useEffect(() => {
     if (!AMap || !mapInstance) return;
@@ -116,6 +121,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   const handleCloseLightbox = useCallback(() => {
     setLightboxIndex(null);
     setIsLargeImageLoaded(false);
+    setInfoOpen(false); // 面板状态一并重置
   }, []);
 
   // 1. 预加载机制：后台静默请求当前照片的前一张与后一张大图
@@ -282,6 +288,29 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                 </a>
               )}
               <button
+                type="button"
+                className={`${styles.lightboxInfoBtn} ${
+                  infoOpen ? styles.lightboxInfoBtnActive : ''
+                }`}
+                onClick={() => setInfoOpen((prev) => !prev)}
+                aria-label="Toggle info panel"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v5" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </button>
+              <button
                 className={styles.lightboxCloseBtn}
                 onClick={handleCloseLightbox}
                 aria-label="Close Lightbox"
@@ -375,6 +404,15 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               </button>
             )}
           </div>
+
+          {/* 右侧信息面板（方案 B）：桌面端右侧滑入，移动端底部弹出 */}
+          <LightboxInfoPanel
+            AMap={AMap}
+            photo={currentPhoto}
+            groupName={selectedGroup?.dirName}
+            groupDescription={selectedGroup?.description}
+            open={infoOpen}
+          />
         </div>
       )}
     </>
