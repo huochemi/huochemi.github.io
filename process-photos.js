@@ -29,6 +29,21 @@ const DISPLAY_SIZE = 1920;
 const DISPLAY_QUALITY = 75;
 
 /**
+ * 将毫秒时长格式化为人类可读字符串（不足 1 分钟显示秒，保留 1 位小数）
+ * @param {number} ms 经过的毫秒数
+ * @returns {string} 如 "2分34秒" 或 "5.2秒"
+ */
+function formatDuration(ms) {
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = Math.round(seconds % 60);
+  return `${minutes}分${restSeconds}秒`;
+}
+
+/**
  * 将 EXIF 原始时间字符串规范化为 ISO 8601（无时区后缀）
  * EXIF 原始格式为 "2024:05:01 14:32:00"（拍摄地当地时间，不含时区）
  * 输出格式为 "2024-05-01T14:32:00"，语义：拍摄那一刻的当地墙上时间
@@ -130,6 +145,11 @@ async function generateDisplayImage(inputPath, outputPath) {
 }
 
 async function processAllPhotos() {
+  const startTime = Date.now();
+  const startTimeStr = new Date(startTime).toLocaleString('zh-CN', {
+    hour12: false,
+  });
+  console.log(`开始时间: ${startTimeStr}`);
   try {
     console.log(`正在读取根目录: ${IMGS_DIR}...`);
 
@@ -331,9 +351,13 @@ async function processAllPhotos() {
 
     console.log(`\n处理完成！共生成 ${results.length} 条文件夹数据。`);
     console.log(`结果已保存至: ${OUTPUT_FILE}`);
+    console.log(
+      `耗时: ${formatDuration(Date.now() - startTime)}（结束时间 ${new Date().toLocaleString('zh-CN', { hour12: false })}）`,
+    );
   } catch (error) {
     console.error(`\n[严重错误] ${error.message}`);
     console.error('任务处理失败，脚本已终止执行。');
+    console.error(`已耗时: ${formatDuration(Date.now() - startTime)}`);
     process.exit(1); // 遇到缺失 index.json 或其他错误时直接报错退出
   }
 }
