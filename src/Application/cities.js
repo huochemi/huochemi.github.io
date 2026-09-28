@@ -10,3 +10,8 @@ export const CITIES = [
   { name: '郑州', lng: 113.658097, lat: 34.745795, zoom: 13 },
   { name: '乌兰察布（集宁）', lng: 113.132227, lat: 40.994526, zoom: 12 },
 ];
+
+// 回全局视野落点（GCJ02，坐标纪律同上）：再点已选中 chip 时三段式飞往此处。
+// 替代 setFitView()——其视野随全部 marker 包围盒漂移且无时长控制。
+// 种子值为占位示意，待用户用坐标拾取器确认/调整（zoom 支持小数）。
+export const GLOBAL_VIEW = { lng: 108, lat: 36, zoom: 4.5 };
