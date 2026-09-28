@@ -43,6 +43,15 @@
   color: #1f2937;
 }
 
+/* 文件夹名标题：长名单行截断为省略号，不挤压徽标和关闭按钮 */
+.drawerName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 照片数量徽标 */
 .drawerBadge {
   background-color: #eff6ff;

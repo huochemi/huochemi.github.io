@@ -216,7 +216,10 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             {/* 顶部 Header */}
             <div className={styles.drawerHeader}>
               <div className={styles.drawerTitle}>
-                <span>照片列表</span>
+                {/* 标题显示文件夹名（dirName），缺失时回退通用文案 */}
+                <span className={styles.drawerName}>
+                  {selectedGroup.dirName || '照片列表'}
+                </span>
                 <span className={styles.drawerBadge}>
                   {photoList.length} 张
                 </span>
