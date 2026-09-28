@@ -6,7 +6,12 @@ import AMap, { REMOVE_ALL_MARKERS_TOPIC } from './AMap';
 import MenuDrawer, { OPEN_DRAWER_TOPIC } from '../MenuDrawer';
 import { addMarkersToAMap } from './helpers';
 
+// 兜底首屏视野：仅 photos 数据加载完成前短暂显示。photos 就绪后
+// MapChildren.jsx 的 effect 会 setFitView 自动包住全部 marker
+// （见 docs/plans/2026-09-28-map-initial-fitview.md）。zoom 取全国级，
+// 避免数据到达后从街景级硬切到全国级的可感知跳跃。
 const amapCenter = { latitude: 39.871446, longitude: 116.215768 };
+const amapDefaultZoom = 4;
 
 export const SHOW_MARKERS_TOPIC = 'amap.showmarkers'; // TODO duplicated with src/Application/Map/AMap/index.jsx
 export const HIDE_MARKERS_TOPIC = 'amap.hidemarkers'; // TODO duplicated with src/Application/Map/AMap/index.jsx
@@ -80,7 +85,7 @@ export default class Map extends Component {
       <div className="map-wrapper">
         <AMap
           defaultCenter={amapCenter}
-          defaultZoom={16}
+          defaultZoom={amapDefaultZoom}
           onMapInstanceCreated={this.handleAMapInstanceCreated}
         />
         <div className="menu-btn-wrapper">
