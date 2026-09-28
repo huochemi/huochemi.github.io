@@ -1,6 +1,8 @@
 # Lightbox 信息面板显示照片原文件名（方案 B：管线直出）
 
-状态：草稿（待用户批准）
+状态：已实现（2026-09-28；eslint --max-warnings=0 通过；npm run photos
+重新生成 output.json 含 fileName；CI build 因 build/ 已存在按 docs/
+toolchain.md 门禁交由用户终端执行；待用户验收）
 日期：2026-09-28
 
 ## 背景（自包含，零上下文可读）
