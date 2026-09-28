@@ -32,6 +32,37 @@
   - toggle 郑州→全局(z4.5)：13 → ~8 → 4.500 平滑减速落位；
   - console 无 error/warning；中断安全：连点 cancel rAF、dragstart 中断。
 - 保底：v1 实现已先行提交（ac4de43），v2 验证通过后另行提交。
+
+## 迭代记录 v3：sin 近似 → van Wijk 论文原始算法（2026-09-29）
+
+- 用户要求上网找"Google Earth 的动画路径"。调研结论：Google Maps 2D
+  的 flyTo 内部数学无官方公开，但该弧线有公认学术源头——**van Wijk &
+  Nuij (2003)《Smooth and efficient zooming and panning》**；Mapbox
+  官方文档注明其 flyTo 默认 curve=1.42 即来自该论文用户实验。拿到
+  Uber 开源实现 viewport-mercator-project/src/fly-to-viewport.js 的
+  完整源码（论文方程 9，双曲函数路径），据此移植。
+- v3 改动（仍只改 CityChips.jsx）：
+  - 内核替换：视野宽度 w = cosh(r0)/cosh(r0+ρs) → zoom = start +
+    log2(1/w)；中心在 Web Mercator 世界坐标沿 u 插值（非经纬度直线），
+    方程 9 静态参数 b0/b1/r0/r1/S 在 flyTo 入口一次算好；
+  - 新增 lngLatToWorld/worldToLngLat（标准 Web Mercator，256px 瓦片
+    基准，Node 数值验证 9 位小数互逆）；
+  - 删除 v2 的 sin 近似、CRUISE_SCREEN_WIDTHS、近距 <200km 特殊分支
+    （论文对短距天然给出浅弧+短时长；|u1|<0.01px 退化线性插值）；
+  - 时长公式化：1000·S/SPEED（SPEED=1.2），钳位 [800, 2500]ms；
+  - 保留：rAF 接管、isFlying 守卫、连点取消、dragstart 中断、
+    MIN_ZOOM_FLOOR=3.5 保险钳位。
+- 移植正确性论证：AMap 每级分辨率减半 = Mapbox scale=2^zoom 同构；
+  方程 9 对 u1/w0/w1 的公共单位缩放不变（分子分母同阶），统一用真实
+  屏幕像素即可。
+- 验证（Node 数值 + 浏览器轨迹采样双重）：
+  - Node：互转函数 9 位小数互逆；t=0/t=1 精确落位起终点；论文曲线
+    形态 11 → 8.30（中点）→ 13；
+  - 浏览器：北京→郑州 zoom 11 → 最低 7.99 → 13.000 精确落位（缓进
+    陡落的不对称弧线，论文曲线特征），时长 ~2.5s（命中钳位）；
+    toggle 13 → 4.500 精确落位（末端渐近减速 4.66→4.54→4.5）；
+    高亮保持/清除正常，console 无 error。
+- 保底链：v1 ac4de43 → v2 a99a791 → v3 本次提交。
 日期：2026-09-28
 
 ## 背景（自包含，零上下文可读）
