@@ -97,6 +97,13 @@ function LightboxInfoPanel({ AMap, photo, groupName, groupDescription, open }) {
         </div>
       </div>
 
+      {photo.fileName && (
+        <div className={styles.section}>
+          <div className={styles.label}>文件名</div>
+          <div className={styles.value}>{photo.fileName}</div>
+        </div>
+      )}
+
       {hasCoord && (
         <div className={styles.section}>
           <div className={styles.label}>GPS 坐标（WGS84）</div>

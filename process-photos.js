@@ -310,6 +310,7 @@ async function processAllPhotos() {
       // 构造 photos 数组，每个图片带上各自的 lat / lng / takenAt
       const photos = validPhotos.map((p) => {
         const item = {
+          fileName: p.fileName,
           thumbnailLink: p.thumbnailLink,
           displayLink: p.displayLink,
           webViewLink: p.webViewLink,
@@ -331,6 +332,7 @@ async function processAllPhotos() {
         thumbnailLink: primaryPhoto.thumbnailLink,
         displayLink: primaryPhoto.displayLink,
         webViewLink: primaryPhoto.webViewLink,
+        fileName: primaryPhoto.fileName,
         dirName: dirName,
         ...(indexConfig.description
           ? { description: indexConfig.description }

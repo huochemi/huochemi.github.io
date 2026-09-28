@@ -191,7 +191,11 @@
   display: flex;
   flex-direction: column;
   animation: fadeIn 0.2s ease-out;
-  user-select: none;
+}
+
+/* 深色毛玻璃背景上的选区高亮：默认高亮可能不明显，用强调色半透明蓝 */
+.lightboxOverlay ::selection {
+  background: rgba(96, 165, 250, 0.4);
 }
 
 /* 顶部控制栏 */

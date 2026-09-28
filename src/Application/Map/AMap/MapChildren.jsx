@@ -19,6 +19,7 @@ function flattenPhotos(data) {
           lat: group.lat,
           lng: group.lng,
           takenAt: group.takenAt,
+          fileName: group.fileName,
           thumbnailLink: group.thumbnailLink,
           displayLink: group.displayLink,
           webViewLink: group.webViewLink,
@@ -31,6 +32,7 @@ function flattenPhotos(data) {
       lat: photo.lat ?? group.lat,
       lng: photo.lng ?? group.lng,
       takenAt: photo.takenAt,
+      fileName: photo.fileName,
       thumbnailLink: photo.thumbnailLink,
       displayLink: photo.displayLink,
       webViewLink: photo.webViewLink,
@@ -84,10 +86,18 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
         }));
 
         setPhotos(photos);
-        mapInstance.setFitView();
       },
     );
   }, [AMap, mapInstance, container]);
+
+  // 初始视野自动包住全部照片 marker：必须在 React commit（marker 已
+  // 渲染到地图上）之后调 setFitView，否则找不到 overlay 会静默空转，
+  // 视野停在 Map/index.jsx hardcode 的兜底位置。photos 只从空变为有值
+  // 一次（初始加载），不会在用户交互后反复触发跳视野。
+  useEffect(() => {
+    if (!mapInstance || photos.length === 0) return;
+    mapInstance.setFitView();
+  }, [mapInstance, photos]);
 
   // 计算当前抽屉要展示的照片列表
   // 用 useMemo 缓存引用：否则每次渲染都产生新数组，
