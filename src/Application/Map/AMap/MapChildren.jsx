@@ -24,6 +24,9 @@ function flattenPhotos(data) {
           displayLink: group.displayLink,
           webViewLink: group.webViewLink,
           dirName: group.dirName,
+          // 组级封面名（= 本项自身）。照片分组模式下必须由数据自带，
+          // 因为选中项就是照片本身，无法反查所属组的封面（详见 ⓘ 面板封面判定）
+          coverFileName: group.fileName,
         },
       ];
     }
@@ -37,6 +40,7 @@ function flattenPhotos(data) {
       displayLink: photo.displayLink,
       webViewLink: photo.webViewLink,
       dirName: group.dirName,
+      coverFileName: group.fileName,
     }));
   });
 }
@@ -52,6 +56,22 @@ const formatTakenAtFull = (takenAt) =>
 // 短格式 "14:32"（缩略图角标用，卡片空间有限只显示时刻）
 const formatTakenAtShort = (takenAt) =>
   takenAt ? takenAt.slice(11, 16) : '';
+
+// Marker 悬停 tooltip 文案（AMap 原生 title），按分组模式给语义：
+// 文件夹模式显示「文件夹名（共 N 张）」，照片模式显示「文件名 · 拍摄时间」。
+// 判别式用 photo.photos 而非 localStorage：分组模式的 item 是 output.json
+// 顶层对象、带 photos 数组；照片模式的 item 由 flattenPhotos 产出、无该字段。
+// 字段缺失时宁缺毋假（filter(Boolean) + join），不渲染 "undefined ·"。
+const markerTooltip = (photo, photoCount) => {
+  if (photo.photos) {
+    return photo.dirName
+      ? `${photo.dirName}（共 ${photoCount} 张）`
+      : `共 ${photoCount} 张`;
+  }
+  return [photo.fileName, formatTakenAtFull(photo.takenAt)]
+    .filter(Boolean)
+    .join(' · ');
+};
 
 const allPhotos =
   localStorage.getItem('hcm_group_by') === 'photo'
@@ -175,6 +195,13 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
 
   const currentPhoto = photoList[lightboxIndex];
 
+  // 当前照片所属组的封面名：文件夹分组模式下取组对象的 fileName（= 封面），
+  // 照片分组模式下取 flattenPhotos 下发的 coverFileName。两者都不能用
+  // selectedGroup.fileName 兜底判定——照片模式下它就是照片自身，会恒等。
+  const coverFileName = selectedGroup
+    ? selectedGroup.coverFileName || selectedGroup.fileName
+    : undefined;
+
   return (
     <>
       {/* 顶部城市跳转胶囊条（数据源 src/Application/cities.js，用户手动维护） */}
@@ -190,7 +217,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
         return (
           <Marker
             key={index}
-            title={`Marker ${index}`}
+            title={markerTooltip(photo, photoCount)}
             position={photo.lnglat}
             content={`
               <div class="hcm-photo-pin">
@@ -424,6 +451,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             photo={currentPhoto}
             groupName={selectedGroup?.dirName}
             groupDescription={selectedGroup?.description}
+            isCover={currentPhoto.fileName === coverFileName}
             open={infoOpen}
           />
         </div>

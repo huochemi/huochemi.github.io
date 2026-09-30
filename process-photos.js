@@ -22,6 +22,9 @@ const BASE_URL = '/data/photos';
 // 缩略图配置：300x300 px（适配 2x/3x 高分屏）
 const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
+// 派生图文件名后缀（delete-photo.js 有一套自己的副本，改这里需同步）
+const THUMB_SUFFIX = '_thumb.webp';
+const DISPLAY_SUFFIX = '_display.webp';
 
 // 展示图配置：1920px 宽（网页 Lightbox 全屏展示足够），
 // 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化
@@ -144,6 +147,66 @@ async function generateDisplayImage(inputPath, outputPath) {
   }
 }
 
+/**
+ * 数据一致性检查（只报告：不修改任何文件、不改变退出码、不调用外部命令）
+ *
+ * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` 找不到同名原图。
+ * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
+ * 报告用 `[不一致]` 前缀而非 `[警告]`，避免与"无 GPS 警告即成功"的既有
+ * 判定口径混淆。
+ *
+ * @param {string[]} dirNames 照片文件夹名列表
+ */
+async function reportInconsistencies(dirNames) {
+  const orphans = [];
+  const suffixes = [THUMB_SUFFIX, DISPLAY_SUFFIX];
+
+  for (const dirName of dirNames) {
+    const dirPath = path.join(IMGS_DIR, dirName);
+    let files;
+    try {
+      files = await fs.readdir(dirPath);
+    } catch {
+      continue; // 该文件夹已在主流程报错，此处不重复报
+    }
+
+    // 原图基名集合（不带扩展名），用于与派生文件配对
+    const stems = new Set();
+    for (const file of files) {
+      if (
+        ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
+        !file.includes('_thumb')
+      ) {
+        stems.add(path.parse(file).name);
+      }
+    }
+
+    for (const file of files) {
+      const suffix = suffixes.find((s) => file.endsWith(s));
+      if (!suffix) continue;
+      const stem = file.slice(0, -suffix.length);
+      if (!stems.has(stem)) {
+        orphans.push({ dirName, file, fullPath: path.join(dirPath, file) });
+      }
+    }
+  }
+
+  console.log('\n数据一致性检查：');
+  if (orphans.length === 0) {
+    console.log('  [通过] 未发现孤儿派生文件。');
+    return;
+  }
+
+  console.log(
+    `  [不一致] 发现 ${orphans.length} 个孤儿派生文件（无对应原图，会随 data 仓库一起部署）：`,
+  );
+  for (const orphan of orphans) {
+    console.log(`    ${orphan.dirName}/${orphan.file}`);
+  }
+  console.log('  [建议] 确认后自行清理（本脚本不删除任何文件）：');
+  console.log(`    rm ${orphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
+}
+
 async function processAllPhotos() {
   const startTime = Date.now();
   const startTimeStr = new Date(startTime).toLocaleString('zh-CN', {
@@ -207,9 +270,9 @@ async function processAllPhotos() {
           const filePath = path.join(dirPath, file);
           const parsed = path.parse(file);
 
-          const thumbFileName = `${parsed.name}_thumb.webp`;
+          const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
           const thumbPath = path.join(dirPath, thumbFileName);
-          const displayFileName = `${parsed.name}_display.webp`;
+          const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
           const displayPath = path.join(dirPath, displayFileName);
 
           const webViewLink = `${BASE_URL}/${dirName}/${file}`;
@@ -350,6 +413,9 @@ async function processAllPhotos() {
 
     // 4. 将数组写入 JSON 文件
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
+
+    // 5. 数据一致性检查（只报告，不影响退出码）
+    await reportInconsistencies(subDirs.map((dir) => dir.name));
 
     console.log(`\n处理完成！共生成 ${results.length} 条文件夹数据。`);
     console.log(`结果已保存至: ${OUTPUT_FILE}`);

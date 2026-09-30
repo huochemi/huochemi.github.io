@@ -111,6 +111,60 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* 封面标记：封面不可删除（删除会让整组失去坐标与缩略图来源） */
+.coverBadge {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 0.5px solid rgba(255, 200, 120, 0.5);
+  background: rgba(255, 176, 60, 0.18);
+  color: #ffd591;
+}
+
+/* 复制删除命令按钮：面板内的主操作，占满宽度 */
+.copyCmdBtn {
+  width: 100%;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.copyCmdBtn:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+/* 命令预览：等宽字体、长命令可换行，让用户看清将被复制的内容 */
+.cmdPreview {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+  word-break: break-all;
+}
+
+/* 行内代码（字段名等） */
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
 /* 移动端：改为底部弹出的 bottom sheet，不遮整张大图 */
 @media (max-width: 640px) {
   .panel {
