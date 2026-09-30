@@ -27,6 +27,9 @@ function flattenPhotos(data) {
           // 组级封面名（= 本项自身）。照片分组模式下必须由数据自带，
           // 因为选中项就是照片本身，无法反查所属组的封面（详见 ⓘ 面板封面判定）
           coverFileName: group.fileName,
+          // 组级当前不写 device（文件夹内混机时单一值无意义），
+          // 此处透传仅为两个分支结构对称，实际取到 undefined
+          device: group.device,
         },
       ];
     }
@@ -35,6 +38,7 @@ function flattenPhotos(data) {
       lat: photo.lat ?? group.lat,
       lng: photo.lng ?? group.lng,
       takenAt: photo.takenAt,
+      device: photo.device,
       fileName: photo.fileName,
       thumbnailLink: photo.thumbnailLink,
       displayLink: photo.displayLink,
@@ -56,6 +60,62 @@ const formatTakenAtFull = (takenAt) =>
 // 短格式 "14:32"（缩略图角标用，卡片空间有限只显示时刻）
 const formatTakenAtShort = (takenAt) =>
   takenAt ? takenAt.slice(11, 16) : '';
+
+// 从 fileName 扩展名推导原始格式（如 "IMG_5165.HEIC" → "HEIC"）。
+// 扩展名本身就是格式的事实源，故不在 output.json 另加 format 字段
+// （见 docs/plans/2026-09-30-photo-format-badge.md）
+const formatFileExt = (fileName) => {
+  const i = fileName ? fileName.lastIndexOf('.') : -1;
+  return i >= 0 ? fileName.slice(i + 1).toUpperCase() : '';
+};
+
+// 拍摄设备类型（output.json 的 device 字段，管线从 EXIF 归一而来）→ 角标图标。
+// 用内联 SVG 而非 emoji：彩色 emoji 的配色固定在位图字体里、不受 CSS color 控制，
+// 📷 的深灰机身叠在角标半透明黑底 + 深色照片上明度差≈0，等于隐形；SVG 以
+// stroke="currentColor" 继承角标白色，任何底图、任何平台都清晰。图标样式沿用
+// 本文件 Lightbox 图标的既有惯例（viewBox 24 / fill none / strokeWidth 2）。
+// 只放图标不放品牌型号文本（角标空间有限）；role + aria-label 是为保住
+// emoji 时代屏幕阅读器会念出的「camera」语义——本图标是设备信息的唯一载体，
+// 与既有装饰性图标的 aria-hidden 刻意区别
+// （见 docs/plans/2026-09-30-photo-device-badge-svg-icon.md）
+const DeviceBadgeIcon = ({ device }) => {
+  if (device !== 'phone' && device !== 'camera') return null;
+
+  const isPhone = device === 'phone';
+
+  return (
+    <svg
+      className={styles.photoBadgeIcon}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      role="img"
+      aria-label={isPhone ? '手机拍摄' : '相机拍摄'}
+    >
+      {isPhone ? (
+        <>
+          <rect x="7.5" y="2.5" width="9" height="19" rx="2.5" />
+          <path d="M11 18.6h2" />
+        </>
+      ) : (
+        <>
+          <rect x="3" y="7" width="18" height="13" rx="2.5" />
+          <circle cx="12" cy="13.5" r="3.6" />
+        </>
+      )}
+    </svg>
+  );
+};
+
+// 缩略图角标文本段："14:32 · HEIC"；缺项自动省略，皆缺返回空串
+// （与 markerTooltip 同惯例：filter(Boolean) + join，不渲染 "undefined ·"）。
+// 设备图标不在此函数内——SVG 是元素、无法进 join，改由 DeviceBadgeIcon 渲染
+const thumbnailBadgeText = (photo) =>
+  [formatTakenAtShort(photo.takenAt), formatFileExt(photo.fileName)]
+    .filter(Boolean)
+    .join(' · ');
 
 // Marker 悬停 tooltip 文案（AMap 原生 title），按分组模式给语义：
 // 文件夹模式显示「文件夹名（共 N 张）」，照片模式显示「文件名 · 拍摄时间」。
@@ -288,10 +348,12 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                       className={styles.photoThumb}
                       loading="lazy"
                     />
-                    {/* 方案 B：缩略图左下角拍摄时间角标 */}
-                    {p.takenAt && (
+                    {/* 方案 B：缩略图左下角角标 = 拍摄时刻 · 原始格式 · 设备图标 */}
+                    {(p.takenAt || p.fileName || p.device) && (
                       <span className={styles.photoTimeBadge}>
-                        {formatTakenAtShort(p.takenAt)}
+                        {thumbnailBadgeText(p)}
+                        {thumbnailBadgeText(p) && p.device && ' · '}
+                        <DeviceBadgeIcon device={p.device} />
                       </span>
                     )}
                     <div className={styles.photoMask}>

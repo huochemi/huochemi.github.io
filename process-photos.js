@@ -31,6 +31,71 @@ const DISPLAY_SUFFIX = '_display.webp';
 const DISPLAY_SIZE = 1920;
 const DISPLAY_QUALITY = 75;
 
+// 拍摄设备分类：把 EXIF 的 Make / Model 归一为「手机 / 相机」两类枚举。
+// 只存语义、不存品牌名也不存 emoji——前端角标空间有限（只放图标），
+// 且 emoji 属展示层，数据层不该耦合呈现形式。
+// 品牌表是启发式清单而非权威数据源；未命中任何一条时不写 device 字段
+// （宁缺毋假），改由收尾的识别汇总列出未识别组合，避免新设备静默不显示图标。
+const PHONE_MAKES = new Set([
+  'apple',
+  'samsung',
+  'huawei',
+  'honor',
+  'xiaomi',
+  'redmi',
+  'poco',
+  'oppo',
+  'vivo',
+  'oneplus',
+  'google',
+  'realme',
+  'motorola',
+  'meizu',
+  'zte',
+  'nubia',
+  'nothing',
+  'asus',
+  'lenovo',
+  'tcl',
+  'tecno',
+  'infinix',
+]);
+
+const CAMERA_MAKES = new Set([
+  'sony',
+  'canon',
+  'nikon',
+  'fujifilm',
+  'panasonic',
+  'olympus',
+  'om digital solutions',
+  'ricoh',
+  'pentax',
+  'leica',
+  'hasselblad',
+  'sigma',
+  'dji',
+  'gopro',
+  'kodak',
+  'casio',
+]);
+
+/**
+ * 将 EXIF 的 Make / Model 归一为设备类型
+ * @param {string|undefined} make EXIF Make（厂商）
+ * @param {string|undefined} model EXIF Model（型号）
+ * @returns {'phone'|'camera'|null} 无法判定时返回 null（调用方不写该字段）
+ */
+function classifyDevice(make, model) {
+  if (typeof make !== 'string' || make.trim() === '') return null;
+  const brand = make.trim().toLowerCase();
+  // SONY 既产相机又产手机（Xperia），品牌表本身无法区分，故用 Model 级特例优先判定
+  if (typeof model === 'string' && /xperia/i.test(model)) return 'phone';
+  if (CAMERA_MAKES.has(brand)) return 'camera';
+  if (PHONE_MAKES.has(brand)) return 'phone';
+  return null;
+}
+
 /**
  * 将毫秒时长格式化为人类可读字符串（不足 1 分钟显示秒，保留 1 位小数）
  * @param {number} ms 经过的毫秒数
@@ -207,6 +272,41 @@ async function reportInconsistencies(dirNames) {
   console.log(`    rm ${orphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
 }
 
+// 设备识别汇总用：未识别的 "Make / Model" 组合（去重收集，逐张不刷屏）
+const unidentifiedDevices = new Set();
+
+/**
+ * 设备类型识别汇总（只报告：不修改任何文件、不改变退出码）
+ *
+ * 逐张照片静默降级（未识别不写 device 字段、角标不显示图标），只在收尾汇总
+ * 一次并列出来识别组合——否则新增设备品牌只会无声无息地不显示图标。
+ * 前缀用 `[提示]` 而非 `[警告]`，避免与"无 GPS 警告即成功"的既有判定口径混淆。
+ *
+ * @param {object[]} photos 全部文件夹下的照片对象（已展平）
+ */
+function reportDeviceTypes(photos) {
+  let phone = 0;
+  let camera = 0;
+  for (const p of photos) {
+    if (p.device === 'phone') phone += 1;
+    else if (p.device === 'camera') camera += 1;
+  }
+
+  console.log('\n设备类型识别：');
+  console.log(`  📱 手机 ${phone} 张 / 📷 相机 ${camera} 张`);
+  if (unidentifiedDevices.size === 0) {
+    console.log('  [通过] 全部照片均已识别。');
+    return;
+  }
+  console.log(
+    `  [提示] 未识别 ${photos.length - phone - camera} 张（未写 device 字段，角标不显示图标），` +
+      '分类表可能需补充：',
+  );
+  for (const combo of unidentifiedDevices) {
+    console.log(`    ${combo}`);
+  }
+}
+
 async function processAllPhotos() {
   const startTime = Date.now();
   const startTimeStr = new Date(startTime).toLocaleString('zh-CN', {
@@ -279,7 +379,7 @@ async function processAllPhotos() {
           const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
           const displayLink = `${BASE_URL}/${dirName}/${displayFileName}`;
 
-          let lat, lng, takenAt;
+          let lat, lng, takenAt, device;
 
           // 提取 GPS 信息
           try {
@@ -302,11 +402,12 @@ async function processAllPhotos() {
             );
           }
 
-          // 提取原始拍摄时间（reviveValues: false 返回 EXIF 原始字符串，
-          // 避免 exifr 转 Date 后 JSON 序列化时被错误地偏移为 UTC 时间）
+          // 提取原始拍摄时间与设备字段（reviveValues: false 返回 EXIF 原始字符串，
+          // 避免 exifr 转 Date 后 JSON 序列化时被错误地偏移为 UTC 时间）。
+          // 设备字段搭同一次解析顺带取回，不额外多读一遍 EXIF。
           try {
             const exif = await exifr.parse(filePath, {
-              pick: ['DateTimeOriginal'],
+              pick: ['DateTimeOriginal', 'Make', 'Model'],
               reviveValues: false,
             });
             takenAt = normalizeExifDateTime(exif?.DateTimeOriginal);
@@ -315,9 +416,16 @@ async function processAllPhotos() {
                 `[警告] ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
               );
             }
+            device = classifyDevice(exif?.Make, exif?.Model);
+            if (!device) {
+              // 逐张静默降级，组合收集到收尾汇总里统一报告
+              unidentifiedDevices.add(
+                `${exif?.Make ?? '(缺 Make)'} / ${exif?.Model ?? '(缺 Model)'}`,
+              );
+            }
           } catch (err) {
             console.warn(
-              `[警告] 解析 ${dirName}/${file} 拍摄时间失败: ${err.message}`,
+              `[警告] 解析 ${dirName}/${file} 拍摄时间/设备失败: ${err.message}`,
             );
           }
 
@@ -344,6 +452,7 @@ async function processAllPhotos() {
             lat,
             lng,
             takenAt,
+            device,
             thumbnailLink,
             displayLink,
             webViewLink,
@@ -385,6 +494,9 @@ async function processAllPhotos() {
         if (p.takenAt) {
           item.takenAt = p.takenAt;
         }
+        if (p.device) {
+          item.device = p.device;
+        }
         return item;
       });
 
@@ -416,6 +528,9 @@ async function processAllPhotos() {
 
     // 5. 数据一致性检查（只报告，不影响退出码）
     await reportInconsistencies(subDirs.map((dir) => dir.name));
+
+    // 6. 设备类型识别汇总（只报告，不影响退出码）
+    reportDeviceTypes(results.flatMap((group) => group.photos));
 
     console.log(`\n处理完成！共生成 ${results.length} 条文件夹数据。`);
     console.log(`结果已保存至: ${OUTPUT_FILE}`);

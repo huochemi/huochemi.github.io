@@ -158,6 +158,14 @@
   z-index: 2;
 }
 
+/* 角标内的设备图标（内联 SVG）：尺寸与角标 11px 文字对齐，
+   颜色继承 .photoTimeBadge 的 color（白色），不单独设色 */
+.photoBadgeIcon {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+}
+
 /* 动画定义 */
 @keyframes fadeIn {
   from {
