@@ -74,6 +74,7 @@ agent 本会话自建的临时文件）。
 - 构建产物：`src/Application/output.json` 勿手改（由 `npm run photos` 生成）
 - 工具链坑 → `docs/toolchain.md`
 - 照片管线（EXIF/GPS、HEIC 转码、缩略图/展示图档位）→ `docs/data-pipeline.md`
+- 应用结构 / demo 分发机制 → `docs/app-structure.md`
 - AMap API 等领域链接 → `DEVELOP.md`（用户手动维护，agent 不改写）
 - 决策记录 → `docs/plans/`（P1）
 - 提交约定：`.vscode/`、`.gitignore`、`AGENTS.md`、`docs/` 应提交；`.workbuddy/`
