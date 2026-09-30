@@ -198,8 +198,10 @@ function LightboxInfoPanel({
               </button>
               <code className={styles.cmdPreview}>{deleteCommand}</code>
               <div className={styles.desc}>
-                在站点仓库根目录的终端粘贴执行：删除这张照片并自动重跑管线。
-                原图会直接删除、不进回收站，请确认后再执行。
+                在站点仓库根目录的终端粘贴执行：删除这张照片与派生图。原图会直接删除、
+                不进回收站，请确认后再执行；删除后需自行执行一次{' '}
+                <code className={styles.code}>npm run photos</code>{' '}
+                更新 output.json。
               </div>
             </>
           )}

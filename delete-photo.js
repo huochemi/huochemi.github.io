@@ -1,7 +1,8 @@
 /**
- * delete-photo.js — 删除一张照片（原图 + 派生图）并自动重跑管线
+ * delete-photo.js — 删除一张照片（原图 + 派生图），不重跑管线
  *
- * 计划文档：docs/plans/2026-09-30-photo-deletion-workflow.md（决策依据见该文件）
+ * 计划文档：docs/plans/2026-09-30-photo-deletion-workflow.md
+ * （决策依据见该文件；「不重跑管线」为 2026-09-30 修订 v4，理由见该文件）
  *
  * 用法（在站点仓库根目录执行）：
  *   npm run del-photo -- "<文件夹名>" "<文件名>"
@@ -13,18 +14,16 @@
  *      的坐标与缩略图来源，需人工改 index_photo 指定新封面后再删）
  *   3. 删除后该文件夹不再有原图 → 报错退出（管线要求每组至少 1 张）
  *   4. 删除原图与 <名>_thumb.webp / <名>_display.webp（直接删除，不进回收站）
- *   5. 自动重跑 process-photos.js 重新生成 output.json
- *   6. 打印后续两条 git 命令（不代为执行，git 由用户手动控制）
+ *   5. 打印一行提示：output.json **尚未更新**，需自行执行 npm run photos
+ *      （刻意不自动重跑：连删多张时不必为每张付一次全量重跑的等待，v4）
  *
- * 依赖：仅 Node 内置模块（无外部命令，无启动预检）
+ * 依赖：仅 Node 内置模块 fs / path（无外部命令，无子进程，无启动预检）
  */
 
 const fs = require('fs/promises');
 const path = require('path');
-const { spawn } = require('child_process');
 
 const IMGS_DIR = path.join(__dirname, '../data/photos');
-const PIPELINE_FILE = path.join(__dirname, 'process-photos.js');
 
 // 与 process-photos.js 保持一致的图片判定（改一处必须改两处）
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
@@ -34,8 +33,8 @@ const DISPLAY_SUFFIX = '_display.webp';
 const color = {
   red: (s) => `\x1b[31m${s}\x1b[39m`,
   green: (s) => `\x1b[32m${s}\x1b[39m`,
+  yellow: (s) => `\x1b[33m${s}\x1b[39m`,
   cyan: (s) => `\x1b[36m${s}\x1b[39m`,
-  dim: (s) => `\x1b[2m${s}\x1b[22m`,
 };
 
 function printUsage() {
@@ -78,18 +77,6 @@ async function exists(targetPath) {
   } catch {
     return false;
   }
-}
-
-/** 以继承 stdio 的方式跑管线，返回退出码 */
-function runPipeline() {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [PIPELINE_FILE], {
-      stdio: 'inherit',
-      cwd: __dirname,
-    });
-    child.on('error', reject);
-    child.on('close', (code) => resolve(code));
-  });
 }
 
 async function deletePhoto(dirName, fileName) {
@@ -139,7 +126,7 @@ async function deletePhoto(dirName, fileName) {
     throw new Error(
       [
         `文件夹 [${dirName}] 删除这张后不再有原图，管线要求每组至少 1 张。`,
-        '如需整组下线：手动删除该文件夹（含 index.json）后再重跑 npm run photos。',
+        '如需整组下线：手动删除该文件夹（含 index.json）后再执行 npm run photos。',
       ].join('\n'),
     );
   }
@@ -178,30 +165,16 @@ async function deletePhoto(dirName, fileName) {
     }
   }
   console.log(color.green(`✓ 已删除 ${targets.length} 个文件`));
-
-  console.log(color.cyan('\n=== 重跑管线：npm run photos ==='));
-  const exitCode = await runPipeline();
-  if (exitCode !== 0) {
-    throw new Error(
-      `管线退出码 ${exitCode}。文件已删除，请检查上方错误后手动重跑 npm run photos。`,
-    );
-  }
 }
 
-function printNextSteps(dirName, fileName) {
-  const dataRepo = path.join(__dirname, '..', 'data');
-  console.log(color.cyan('\n=== 后续提交（请自行执行，命令未代为运行）==='));
-  console.log('1) 照片仓库（../data，照片与派生图已变动）：');
+/**
+ * 收尾提示：刻意不自动重跑管线（v4）
+ * 连删多张时不必为每张付一次全量重跑的等待，由用户攒够了一次性跑。
+ */
+function printReminder() {
   console.log(
-    `   cd ${dataRepo} && git add -A && git commit -m "Remove ${dirName}/${fileName}" && git push`,
-  );
-  console.log('2) 站点仓库（output.json 已重新生成）：');
-  console.log(
-    `   git add src/Application/output.json && git commit -m "chore: regenerate output.json (remove ${dirName}/${fileName})" && git push`,
-  );
-  console.log(
-    color.dim(
-      '\n提示：两个仓库都要推送，线上才会一致（本地预览走 setupProxy，看不出线上差异）。',
+    color.yellow(
+      '\n⚠ output.json 尚未更新 —— 请执行 npm run photos，再提交 ../data 与本站点两个仓库',
     ),
   );
 }
@@ -225,13 +198,10 @@ async function main() {
   }
 
   await deletePhoto(dirName, fileName);
-  printNextSteps(dirName, fileName);
+  printReminder();
 }
 
 main().catch((err) => {
   console.error(color.red(`\n✖ ${err.message}`));
-  console.error(
-    color.red('git 提交与推送始终由你手动执行，本脚本不会代为运行。'),
-  );
   process.exit(1);
 });

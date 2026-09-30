@@ -19,12 +19,15 @@
 npm run del-photo -- "<文件夹名>" "<文件名>"
 ```
 
-它会删除原图与派生图（`_thumb.webp` / `_display.webp`）并自动重跑 `npm run photos`，
-最后打印两个仓库的提交命令（不代为执行）。
+它会删除原图与派生图（`_thumb.webp` / `_display.webp`），然后提示你自己执行一次
+`npm run photos` 重新生成 `output.json`（脚本**不**自动重跑：连删多张只需跑一次，
+不必为每张等一次全量重跑）。
 
 - **封面不可删除**：`index.json` 的 `index_photo` 指向的照片会被拒绝，需先改封面再删；
   UI 面板对该照片也会标注「封面照片 · 不可删除」并不给复制按钮
 - 原图**直接删除、不进回收站**，执行该命令即为确认
+- 删除后 `output.json` 仍是旧状态（网页上照片还在、缩略图破图），跑一次
+  `npm run photos` 才生效
 - 两个仓库（`../data` 与本站点）都要提交推送，线上才会一致
 
 细节见 `docs/data-pipeline.md`。
