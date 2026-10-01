@@ -212,3 +212,19 @@ export default BaseMapSwitch;
   - 验收标准第 2 条：三档视觉可区分
   - 待验证点第 1 条：RoadNet 层级（若不显示则用 ref 调 `setzIndex`）
   - 待验证点第 2 条：档 1 / 档 2 区分度（若不足则用 `setFeatures(['bg'])`）
+
+## 变更记录：第三档文案「路网」→「标准地图」（2026-10-01）
+
+- 触发：用户提问「路网 / 卫星是不是高德官方术语」时核对出——「路网」确为高德
+  官方 API 术语（`AMap.TileLayer.RoadNet`，官方中文名「路网图层」，与
+  `Satellite`「卫星图层」、`Traffic`「实时路况图层」并列）。但**第三档并没有
+  显示 RoadNet**：该档 Satellite 与 RoadNet 均 `visible=false`，用户看到的是
+  AMap 默认矢量底图，即高德 App 口中的「标准地图」。原文案名不符实。
+- 改动：仅 `MODE_OPTIONS` 的 label 与相关注释（`BaseMapSwitch.jsx`）。
+- **未改**：常量名 `ROAD` 与值 `'road'`。该值已写入用户 localStorage
+  （`hcm_base_map`），是持久化契约；改值会让存量选择回落默认档（虽有回落逻辑、
+  不报错，但属于计划外的用户偏好重置）。代码内已加注释说明此约束。
+- 附带澄清：「路网」（RoadNet，道路线画网络）≠「路况」（Traffic，红黄绿拥堵
+  着色），二者常被混用；本组件不涉及 Traffic 图层。
+- 验证：`eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0` → exit 0。
+  CI build 未跑（`build/` 存在，按 `docs/toolchain.md` 交用户终端执行）。

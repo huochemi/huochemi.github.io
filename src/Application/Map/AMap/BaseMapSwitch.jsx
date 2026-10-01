@@ -4,7 +4,9 @@ import { TileLayer, TileLayerType } from '@uiw/react-amap';
 import styles from './BaseMapSwitch.module.css';
 
 // 底图档位。三个值即 state 的全部取值域，localStorage 校验复用同一份定义，
-// 避免"可选值"散落两处
+// 避免"可选值"散落两处。
+// 值 `road` 已写入用户 localStorage（hcm_base_map），是持久化契约：它承载的
+// UI 文案是「标准地图」（AMap 默认矢量底图），改值会让存量选择回落默认档。
 export const BASE_MAP_MODES = {
   SATELLITE: 'satellite',
   SATELLITE_ROAD: 'satellite-road',
@@ -15,7 +17,7 @@ export const BASE_MAP_MODES = {
 const MODE_OPTIONS = [
   { value: BASE_MAP_MODES.SATELLITE, label: '卫星' },
   { value: BASE_MAP_MODES.SATELLITE_ROAD, label: '卫星+路网' },
-  { value: BASE_MAP_MODES.ROAD, label: '路网' },
+  { value: BASE_MAP_MODES.ROAD, label: '标准地图' },
 ];
 
 const STORAGE_KEY = 'hcm_base_map';
@@ -32,12 +34,15 @@ const readStoredMode = () => {
 };
 
 /**
- * 底图三档切换：卫星 / 卫星+路网 / 路网。
+ * 底图三档切换：卫星 / 卫星+路网 / 标准地图。
  *
  * 图层与档位的关系（唯一事实源就是下面这一个 mode state）：
  *   satellite       Satellite 显示、RoadNet 隐藏 → 卫星影像
- *   satellite-road  Satellite 显示、RoadNet 显示 → 卫星影像 + 路网
- *   road            两者皆隐藏                    → AMap 默认矢量底图
+ *   satellite-road  Satellite 显示、RoadNet 显示 → 卫星影像 + 路网线叠加
+ *   road            两者皆隐藏                    → AMap 标准矢量底图（自带路名与 POI）
+ *
+ * 第三档 UI 文案用「标准地图」而非「路网」：该档是 AMap 默认矢量底图，并非
+ * RoadNet 图层，叫「路网」会被理解成正在看纯道路网格。
  *
  * 用声明式 TileLayer 而非 <Map layers={...}>：后者的 layers prop 在 @uiw 内部
  * 走 useSettingProperties(['Layers'])，按数组**引用**比较，每次渲染都会重设图层；
