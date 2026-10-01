@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Map, APILoader } from '@uiw/react-amap';
 
+import BaseMapSwitch from './BaseMapSwitch';
 import MapChildren from './MapChildren';
 
 import './index.css';
@@ -15,23 +16,18 @@ const MapDemo = ({ defaultCenter, defaultZoom }) => {
     console.debug('mapRef:', mapRef);
   }, []);
 
-  const layers = [];
-  if (window.AMap) {
-    // https://lbs.amap.com/demo/jsapi-v2/example/layers/satellite/
-    layers.push(new window.AMap.TileLayer.Satellite());
-  }
-
   return (
     <Map
       ref={mapRef}
       center={[defaultCenter.longitude, defaultCenter.latitude]}
       zoom={defaultZoom}
-      layers={layers}
     >
       {({ AMap, map, container }) => {
         console.debug('AMap loaded', AMap, map, container);
 
+        // 底图图层先于 marker 注册，保证卫星/路网处于 marker 之下
         return [
+          <BaseMapSwitch key="basemap" />,
           <MapChildren
             key="11110"
             AMap={AMap}

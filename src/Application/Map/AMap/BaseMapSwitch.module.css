@@ -1,0 +1,47 @@
+/* 底图三档切换：右下角悬浮分段控件。
+   视觉沿用全站语言（CityChips 的毛玻璃胶囊 + antd v5 主色选中态）。
+
+   z-index 999 低于抽屉遮罩的 1000：抽屉/Lightbox 打开时被自然盖住——
+   那时用户不在看底图，也避免遮挡抽屉内容。
+   bottom 叠加 safe-area 是为了避开 iOS 全面屏的 home indicator。 */
+
+.switcher {
+  position: fixed;
+  right: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 999;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.option {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 13px;
+  color: #333;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.option:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* 选中高亮：与 antd v5 主色、CityChips 的 .chipActive 一致 */
+.optionActive {
+  background: #1677ff;
+  color: #fff;
+}
+
+.optionActive:hover {
+  background: #4096ff;
+}
