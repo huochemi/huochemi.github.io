@@ -782,6 +782,119 @@
     ]
   },
   {
+    "lat": 39.79134444444444,
+    "lng": 116.27624444444444,
+    "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965_thumb.webp",
+    "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965_display.webp",
+    "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965.JPG",
+    "fileName": "DSC02965.JPG",
+    "dirName": "北京-狼垡公园北京动车段",
+    "description": "北京-狼垡公园北京动车段",
+    "takenAt": "2026-06-07T11:15:33",
+    "photos": [
+      {
+        "fileName": "DSC02914.JPG",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02914_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02914_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02914.JPG",
+        "lat": 39.791355555555555,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:01:20",
+        "device": "camera"
+      },
+      {
+        "fileName": "DSC02918.JPG",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02918_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02918_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02918.JPG",
+        "lat": 39.791355555555555,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:03:49",
+        "device": "camera"
+      },
+      {
+        "fileName": "DSC02948.JPG",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02948_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02948_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02948.JPG",
+        "lat": 39.79134444444444,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:12:10",
+        "device": "camera"
+      },
+      {
+        "fileName": "DSC02965.JPG",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02965.JPG",
+        "lat": 39.79134444444444,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:15:33",
+        "device": "camera"
+      },
+      {
+        "fileName": "DSC02981.JPG",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/DSC02981_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/DSC02981_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/DSC02981.JPG",
+        "lat": 39.79134444444444,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:18:25",
+        "device": "camera"
+      },
+      {
+        "fileName": "IMG_4053.HEIC",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4053_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4053_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4053.HEIC",
+        "lat": 39.791355555555555,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:08:11",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4055.HEIC",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4055_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4055_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4055.HEIC",
+        "lat": 39.791358333333335,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:08:12",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4056.HEIC",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4056_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4056_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4056.HEIC",
+        "lat": 39.791358333333335,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:08:13",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4059.HEIC",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4059_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4059_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4059.HEIC",
+        "lat": 39.791355555555555,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:08:15",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4060.HEIC",
+        "thumbnailLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4060_thumb.webp",
+        "displayLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4060_display.webp",
+        "webViewLink": "/data/photos/北京-狼垡公园北京动车段/IMG_4060.HEIC",
+        "lat": 39.79134444444444,
+        "lng": 116.27624444444444,
+        "takenAt": "2026-06-07T11:08:17",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 39.760883,
     "lng": 116.166786,
     "thumbnailLink": "/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780_thumb.webp",
