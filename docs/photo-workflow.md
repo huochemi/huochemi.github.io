@@ -26,7 +26,13 @@
 
 1. 从设备导入原始照片到 `../data/photos/<地点>/`
 2. `npm run fix-gps -- <地点>`：把手机照的坐标复制到相机照
-   （同目录内按拍摄时间就近推荐参照；详见 `photo-metadata.md`）
+   （同目录内按拍摄时间就近推荐参照；详见 `photo-metadata.md`）。
+   整个文件夹是同一地点时可走批量模式一步到位：
+   `npm run fix-gps -- <地点> --ref <参照文件名> --all`（非交互，把参照坐标
+   写入该文件夹全部缺 GPS 的照片；`npm run photos` 预检提示在"恰有 1 张
+   带坐标照片"时会直接给出这条含参照文件名的命令）。命令可安全重跑：
+   已写入的照片不会进目标列表，工具永不覆盖已有坐标。
+   计划文档：`docs/plans/2026-10-03-fix-gps-batch-mode.md`
 3. 维护 `index.json`（`index_photo` 指定封面、可选 `description`）
 4. `npm run photos`：生成派生图 + `src/Application/output.json`
 5. 两个仓库（站点 / data）分别提交

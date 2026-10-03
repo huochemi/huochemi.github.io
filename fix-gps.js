@@ -12,9 +12,12 @@
  *   npm run fix-gps -- 郑州                               只处理指定文件夹
  *   npm run fix-gps -- 郑州 --target a.JPG --ref b.HEIC   手动指定目标与参照（同文件夹）
  *   npm run fix-gps -- 郑州 --target a.JPG [--yes]        指定目标，参照自动推荐；--yes 免确认
+ *   npm run fix-gps -- 郑州 --ref b.HEIC --all            批量：将参照坐标写入该文件夹
+ *                                                         全部缺 GPS 的照片（非交互，命令即确认）
  *
  * 交互键：y 确认 / n 换参照 / s 跳过 / q 退出（单键，无需回车）
  * 中断后重跑可续作：已写入 GPS 的照片不会再出现在清单里。
+ * 注：npm run photos 预检失败提示在"恰有 1 张带坐标照片"时会直接给出上面的批量命令。
  */
 
 const fs = require('fs/promises');
@@ -421,14 +424,22 @@ async function runSpecified(target, ref, yes) {
   }
 }
 
-/** 解析命令行参数：位置参数为文件夹名，支持 --target / --ref / --yes */
+/** 解析命令行参数：位置参数为文件夹名，支持 --target / --ref / --yes / --all */
 function parseArgs(argv) {
-  const args = { dir: undefined, target: undefined, ref: undefined, yes: false };
+  const args = {
+    dir: undefined,
+    target: undefined,
+    ref: undefined,
+    yes: false,
+    all: false,
+  };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--yes') {
       args.yes = true;
+    } else if (arg === '--all') {
+      args.all = true;
     } else if (arg === '--target' || arg === '--ref') {
       const value = argv[i + 1];
       if (value === undefined || value.startsWith('--')) {
@@ -451,6 +462,12 @@ function parseArgs(argv) {
   if (args.yes && !args.target) {
     throw new Error('--yes 只能在 --target 指定模式下使用');
   }
+  if (args.all && (!args.dir || !args.ref)) {
+    throw new Error('--all 需要同时指定文件夹（位置参数）与 --ref <参照文件名>');
+  }
+  if (args.all && args.target) {
+    throw new Error('--all 与 --target 不能同时使用');
+  }
   return args;
 }
 
@@ -460,6 +477,42 @@ function printUsage() {
   console.log('  npm run fix-gps -- 文件夹                             只处理指定文件夹');
   console.log('  npm run fix-gps -- 文件夹 --target a.JPG --ref b.HEIC 手动指定目标与参照（同文件夹）');
   console.log('  npm run fix-gps -- 文件夹 --target a.JPG [--yes]      指定目标，参照自动推荐；--yes 免确认');
+  console.log('  npm run fix-gps -- 文件夹 --ref b.HEIC --all          批量：将参照坐标写入该文件夹全部缺 GPS 的照片');
+}
+
+/**
+ * 批量模式（--all）：把参照坐标写入文件夹内全部缺 GPS 的照片。
+ * 非交互——命令本身就是用户的确认（与 --yes 的定位一致）。
+ * 写入复用 writeGps()（溯源标记、不复制 GPSHPositioningError、写入后验证全部继承）；
+ * 任一张验证失败即停止全部后续写入（已写入的保持已写入，重跑 --all 会因
+ * "已有 GPS 不进目标列表"而自动续作剩余部分）。
+ */
+async function runBatch(targets, ref, filterDir) {
+  if (targets.length === 0) {
+    console.log('没有缺 GPS 的照片，无需处理。');
+    return;
+  }
+
+  console.log(
+    `批量模式：将 ${ref.fileName} 的坐标（${ref.lat.toFixed(6)}, ${ref.lng.toFixed(6)}）` +
+      `写入 "${filterDir}" 中 ${targets.length} 张缺 GPS 的照片。`,
+  );
+
+  const writtenList = [];
+  for (const target of targets) {
+    try {
+      await writeGps(target, ref);
+      console.log(color.green(`✓ 已写入并验证：${target.fileName}`));
+      writtenList.push(`${target.dirName}/${target.fileName}`);
+    } catch (err) {
+      console.error(color.red(`\n[严重错误] ${err.message}`));
+      console.error(color.red('已停止全部后续写入。'));
+      await printSummary(writtenList.length, 0, writtenList);
+      process.exit(1);
+    }
+  }
+
+  await printSummary(writtenList.length, 0, writtenList);
 }
 
 async function main() {
@@ -552,6 +605,27 @@ async function main() {
     }
 
     return runSpecified(target, ref, args.yes);
+  }
+
+  // 批量模式：--all（parseArgs 已保证此时必有 dir 与 ref）
+  if (args.all) {
+    const dirRefs = filteredRefs.get(filterDir) || [];
+    const ref = dirRefs.find((r) => r.fileName === args.ref);
+    if (!ref) {
+      if (filteredMissing.some((p) => p.fileName === args.ref)) {
+        console.error(
+          color.red(`[错误] "${args.ref}" 没有 GPS 坐标，不能作为参照。`),
+        );
+      } else {
+        console.error(
+          color.red(
+            `[错误] 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的图片文件）。`,
+          ),
+        );
+      }
+      process.exit(1);
+    }
+    return runBatch(filteredMissing, ref, filterDir);
   }
 
   return run(filteredMissing, filteredRefs, filterDir, { specified: false });

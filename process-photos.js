@@ -466,10 +466,26 @@ async function preflightDir(dirName) {
       (image) => image.meta.lat === undefined || image.meta.lng === undefined,
     );
     if (missing.length > 0) {
+      // 批量提示：文件夹内恰好有 1 张带坐标照片时，直接给出含参照文件名的批量
+      // 命令（fix-gps --all）。0 张无法批量；≥2 张时选哪张作参照是用户的判断，
+      // 不替用户拍板，维持只提示交互命令。排除 _display 与 fix-gps 的扫描口径
+      // 对齐（_thumb 本就被 imageFiles 过滤）。
+      const refs = images.filter(
+        (image) =>
+          image.meta.lat !== undefined &&
+          image.meta.lng !== undefined &&
+          !image.file.includes('_display'),
+      );
+      let hint = `补坐标后重跑：npm run fix-gps -- "${dirName}"`;
+      if (refs.length === 1) {
+        hint +=
+          `\n或批量复制坐标（将 ${refs[0].file} 的坐标写入其余 ${missing.length} 张）：` +
+          `\n    npm run fix-gps -- "${dirName}" --ref ${refs[0].file} --all`;
+      }
       return {
         dirName,
         reason: `${missing.length}/${images.length} 张缺坐标`,
-        hint: `补坐标后重跑：npm run fix-gps -- "${dirName}"`,
+        hint,
       };
     }
 
