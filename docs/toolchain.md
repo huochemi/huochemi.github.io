@@ -2,6 +2,22 @@
 
 构建 / lint / React 工具链积累的坑。AGENTS.md 只保留一行摘要，完整内容以本文件为准。
 
+## agent 沙箱 shell 的 PATH 不含 `/opt/homebrew/bin`
+
+agent 执行命令用的是一套固定的受限 PATH，不包含 Homebrew 的 `/opt/homebrew/bin`
+（用户终端 zsh 通过 shell 配置加载了它）。brew 安装的命令（如 `exiftool`）在
+agent 侧 `which` 报 not found **≠ 未安装**。
+
+- 处理：brew 装的命令一律先用绝对路径试（如 `/opt/homebrew/bin/exiftool`，
+  已验证存在且可执行）；绝对路径也不行再交用户终端执行（S3：不做多重兜底）
+- 定性：这是 agent 环境限制，不是项目 bug（S2：触发条件不在用户真实使用路径，
+  用户终端永不触发），不要为此改项目代码
+- 本 repo 外部命令依赖盘点（2026-10-03）：`sips`（macOS 原生 `/usr/bin`，
+  沙箱 PATH 含 `/usr/bin`，不受影响）与 `exiftool`（唯一 brew 依赖）。注意脚本
+  内部用裸命令名调 `exiftool`（`fix-gps.js` 的 `execFileAsync('exiftool',...)`），
+  按 PATH 解析——**agent 在沙箱里跑 `npm run fix-gps` 即使知道绝对路径也会在
+  预检处报"未找到"**；按 S1/S2，写 EXIF 的执行本就交用户终端，这不是缺陷
+
 ## ESLint CLI lint 目录默认只查 `.js`
 
 用 `eslint src` 这类目录形式时，`.jsx/.ts/.tsx` 文件会被**静默跳过**，检查形同虚设。

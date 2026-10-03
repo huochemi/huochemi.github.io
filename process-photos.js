@@ -217,8 +217,8 @@ async function generateDisplayImage(inputPath, outputPath) {
  *
  * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` 找不到同名原图。
  * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
- * 报告用 `[不一致]` 前缀而非 `[警告]`，避免与"无 GPS 警告即成功"的既有
- * 判定口径混淆。
+ * 报告用 `[不一致]` 前缀而非 `[跳过]`，与"未通过预检的文件夹"这一层判定区分开
+ * （后者会改退出码，孤儿文件只报告、不改退出码）。
  *
  * @param {string[]} dirNames 照片文件夹名列表
  */
@@ -280,7 +280,8 @@ const unidentifiedDevices = new Set();
  *
  * 逐张照片静默降级（未识别不写 device 字段、角标不显示图标），只在收尾汇总
  * 一次并列出来识别组合——否则新增设备品牌只会无声无息地不显示图标。
- * 前缀用 `[提示]` 而非 `[警告]`，避免与"无 GPS 警告即成功"的既有判定口径混淆。
+ * 前缀用 `[提示]` 而非 `[跳过]`，与"未通过预检的文件夹"这一层判定区分开
+ * （后者会改退出码，未识别设备只报告、不改退出码）。
  *
  * @param {object[]} photos 全部文件夹下的照片对象（已展平）
  */
@@ -307,6 +308,278 @@ function reportDeviceTypes(photos) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// EXIF 预检（零写操作）
+// ---------------------------------------------------------------------------
+
+// 坐标溯源标记前缀：fix-gps 复制坐标时写进 GPSProcessingMethod，用于把"复制来的
+// 坐标"与原生坐标区分开。前缀必须存在——相机会自己写该标签（如 "GPS" / "Apple"），
+// 没有前缀就无法区分。
+const GEO_SOURCE_PREFIX = 'hcm-geosource';
+
+// 预检的 EXIF 解析配置：一次 parse 取回坐标、拍摄时间、设备、溯源的全部字段
+// （沿用既有原则：同一张照片不重复读 EXIF）。分块 pick 是必需的——顶层 pick 会把
+// XMP 块一并滤掉，而设备/时间在 IFD0+EXIF 块、坐标在 GPS 块。
+// reviveValues: false 返回 EXIF 原始字符串，避免 exifr 转 Date 后 JSON 序列化时
+// 被错误地偏移为 UTC 时间。
+const PREFLIGHT_EXIF_OPTS = {
+  ifd0: { pick: ['Make', 'Model'] },
+  exif: { pick: ['DateTimeOriginal'] },
+  gps: { pick: ['GPSLatitude', 'GPSLongitude', 'GPSProcessingMethod'] },
+  reviveValues: false,
+};
+
+/**
+ * 解析 EXIF UNDEFINED 类型标签（如 GPSProcessingMethod）的文本值
+ *
+ * 该类型前 8 字节是字符集标识（"ASCII\0\0\0" / "UNICODE\0"），其后才是正文；
+ * exifr 不做这层解码、原样返回字节。非 ASCII 值时 exiftool 写 UNICODE（UTF-16），
+ * 字节序随文件 TIFF 头（实拍文件均为小端），故按小端还原。
+ *
+ * @param {Uint8Array|number[]|string|undefined} raw exifr 读到的原始值
+ * @returns {string|null} 解码后的正文，无法解码返回 null
+ */
+function decodeUndefinedText(raw) {
+  if (typeof raw === 'string') return raw;
+  if (!raw || typeof raw.length !== 'number' || raw.length <= 8) return null;
+  const bytes = Uint8Array.from(raw);
+  const charset = String.fromCharCode(...bytes.slice(0, 8)).replace(/\0+$/, '');
+  const body = bytes.slice(8);
+  if (/^UNICODE$/i.test(charset)) {
+    let text = '';
+    for (let i = 0; i + 1 < body.length; i += 2) {
+      text += String.fromCharCode(body[i] | (body[i + 1] << 8));
+    }
+    return text.replace(/\0+$/, '');
+  }
+  return new TextDecoder('utf-8').decode(body).replace(/\0+$/, '');
+}
+
+/**
+ * 从 GPSProcessingMethod 提取坐标溯源的参照文件名
+ *
+ * fix-gps 写入的格式为 `hcm-geosource ref=<参照文件名> date=<YYYY-MM-DD>`。
+ * 无标记（或标记不是本工具写的）→ undefined，表示原生坐标；
+ * 有标记但参照名不可解析 → 'unknown'（仍是复制坐标，不能被误判为原生）。
+ *
+ * @param {Uint8Array|number[]|string|undefined} raw GPSProcessingMethod 原始值
+ * @returns {string|undefined} 参照文件名
+ */
+function parseGeoSource(raw) {
+  const text = decodeUndefinedText(raw)?.trim();
+  if (!text || !text.startsWith(GEO_SOURCE_PREFIX)) return undefined;
+  const match = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
+  return match ? match[1] : 'unknown';
+}
+
+/**
+ * 读取单张照片的预检元数据（静默：不打印、不写盘）
+ * @param {string} filePath 图片绝对路径
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoSource}>}
+ */
+async function readPhotoMeta(filePath) {
+  const exif = await exifr.parse(filePath, PREFLIGHT_EXIF_OPTS).catch(() => null);
+  return {
+    lat: exif?.latitude,
+    lng: exif?.longitude,
+    takenAt: normalizeExifDateTime(exif?.DateTimeOriginal),
+    make: exif?.Make,
+    model: exif?.Model,
+    geoSource: parseGeoSource(exif?.GPSProcessingMethod),
+  };
+}
+
+/**
+ * 文件夹级预检（只读：读 index.json 与 EXIF，绝不写任何文件）
+ *
+ * 这是"能不能产出"的唯一判定点，排在生成阶段之前——任何失败都在写第一张
+ * 派生图之前暴露，不留半成品（见 docs/plans/2026-10-03-gps-gate-hardening.md）。
+ * 失败不抛错，返回带 reason 的对象，由调用方跳过该文件夹而不影响其它文件夹。
+ *
+ * @param {string} dirName 文件夹名
+ * @returns {Promise<object>} 通过时含 images 等字段；失败时含 reason / hint
+ */
+async function preflightDir(dirName) {
+  const dirPath = path.join(IMGS_DIR, dirName);
+  try {
+    // --- 强校验：检查 index.json 是否存在并解析 ---
+    let indexConfig;
+    try {
+      const indexContent = await fs.readFile(
+        path.join(dirPath, 'index.json'),
+        'utf-8',
+      );
+      indexConfig = JSON.parse(indexContent);
+    } catch (err) {
+      return {
+        dirName,
+        reason: `缺少 index.json 或文件 JSON 格式不正确: ${err.message}`,
+        hint: '修正 index.json 后重跑：npm run photos',
+      };
+    }
+
+    const coverFileName = indexConfig.index_photo;
+    if (!coverFileName) {
+      return {
+        dirName,
+        reason: 'index.json 中未指定 "index_photo"',
+        hint: '修正 index.json 后重跑：npm run photos',
+      };
+    }
+
+    // 过滤出图片文件（剔除带有 _thumb 的已生成缩略图）
+    const files = await fs.readdir(dirPath);
+    const imageFiles = files.filter(
+      (file) =>
+        ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
+        !file.includes('_thumb'),
+    );
+
+    if (imageFiles.length === 0) {
+      return {
+        dirName,
+        reason: '没有符合格式的图片文件',
+        hint: '放入图片后重跑：npm run photos',
+      };
+    }
+
+    if (!imageFiles.includes(coverFileName)) {
+      return {
+        dirName,
+        reason: `index.json 指定的封面图片 "${coverFileName}" 在文件夹中不存在`,
+        hint: '修正 index.json 的 index_photo 后重跑：npm run photos',
+      };
+    }
+
+    // 并行读取全部图片的 EXIF（实测 156 张约 220ms，占整轮耗时 2% 量级）
+    const images = await Promise.all(
+      imageFiles.map(async (file) => ({
+        file,
+        meta: await readPhotoMeta(path.join(dirPath, file)),
+      })),
+    );
+
+    // 组内任一张缺坐标即判失败（含封面，不再有单独的封面分支）：
+    // 相机机身无 GPS 时"相机照缺坐标"是流程的中间态，说明 fix-gps 还没跑，
+    // 此时必须零副作用地停下，而不是带着缺坐标的数据继续产出。
+    const missing = images.filter(
+      (image) => image.meta.lat === undefined || image.meta.lng === undefined,
+    );
+    if (missing.length > 0) {
+      return {
+        dirName,
+        reason: `${missing.length}/${images.length} 张缺坐标`,
+        hint: `补坐标后重跑：npm run fix-gps -- "${dirName}"`,
+      };
+    }
+
+    return { dirName, dirPath, indexConfig, coverFileName, images };
+  } catch (err) {
+    return {
+      dirName,
+      reason: `预检失败: ${err.message}`,
+      hint: '排查后重跑：npm run photos',
+    };
+  }
+}
+
+/**
+ * 生成阶段：为通过预检的文件夹生成派生图并聚合数据
+ * 元数据全部取自预检结果，不再重复读 EXIF。
+ * @param {object} preflight preflightDir 的返回值
+ * @returns {Promise<object>} output.json 中的一条文件夹数据
+ */
+async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images }) {
+  const photos = await Promise.all(
+    images.map(async ({ file, meta }) => {
+      const parsed = path.parse(file);
+      const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
+      const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
+      const filePath = path.join(dirPath, file);
+
+      // 生成 WebP 缩略图
+      try {
+        await generateThumbnail(filePath, path.join(dirPath, thumbFileName));
+      } catch (thumbErr) {
+        console.warn(
+          `[警告] 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
+        );
+      }
+
+      // 生成 WebP 展示图（Lightbox 大图用）
+      try {
+        await generateDisplayImage(filePath, path.join(dirPath, displayFileName));
+      } catch (displayErr) {
+        console.warn(
+          `[警告] 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
+        );
+      }
+
+      if (!meta.takenAt) {
+        console.warn(
+          `[警告] ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
+        );
+      }
+
+      const device = classifyDevice(meta.make, meta.model);
+      if (!device) {
+        // 逐张静默降级，组合收集到收尾汇总里统一报告
+        unidentifiedDevices.add(
+          `${meta.make ?? '(缺 Make)'} / ${meta.model ?? '(缺 Model)'}`,
+        );
+      }
+
+      const item = {
+        fileName: file,
+        thumbnailLink: `${BASE_URL}/${dirName}/${thumbFileName}`,
+        displayLink: `${BASE_URL}/${dirName}/${displayFileName}`,
+        webViewLink: `${BASE_URL}/${dirName}/${file}`,
+      };
+      if (meta.lat !== undefined && meta.lng !== undefined) {
+        item.lat = meta.lat;
+        item.lng = meta.lng;
+      }
+      if (meta.takenAt) {
+        item.takenAt = meta.takenAt;
+      }
+      if (device) {
+        item.device = device;
+      }
+      if (meta.geoSource) {
+        // 坐标是 fix-gps 从参照照片复制来的（预检保证坐标存在，故与 lat/lng 同进退）
+        item.geoSource = meta.geoSource;
+      }
+      return item;
+    }),
+  );
+
+  // 封面（预检已确认存在且带坐标），组级坐标取封面坐标
+  const cover = images.find((image) => image.file === coverFileName).meta;
+  const coverStem = path.parse(coverFileName).name;
+
+  return {
+    lat: cover.lat,
+    lng: cover.lng,
+    thumbnailLink: `${BASE_URL}/${dirName}/${coverStem}${THUMB_SUFFIX}`,
+    displayLink: `${BASE_URL}/${dirName}/${coverStem}${DISPLAY_SUFFIX}`,
+    webViewLink: `${BASE_URL}/${dirName}/${coverFileName}`,
+    fileName: coverFileName,
+    dirName: dirName,
+    ...(indexConfig.description ? { description: indexConfig.description } : {}),
+    ...(cover.takenAt ? { takenAt: cover.takenAt } : {}),
+    photos: photos,
+  };
+}
+
+/** 打印未通过预检的文件夹清单（一行一个，附下一步命令） */
+function reportSkippedDirs(failed) {
+  console.log(`\n[跳过] ${failed.length} 个文件夹未通过预检，本轮不产出数据：`);
+  for (const { dirName, reason, hint } of failed) {
+    console.log(`  ${dirName}：${reason}`);
+    if (hint) console.log(`    ${hint}`);
+  }
+}
+
 async function processAllPhotos() {
   const startTime = Date.now();
   const startTimeStr = new Date(startTime).toLocaleString('zh-CN', {
@@ -326,214 +599,54 @@ async function processAllPhotos() {
       `找到 ${subDirs.length} 个子文件夹，开始按文件夹及 index.json 校验生成数据...`,
     );
 
-    // 2. 遍历各个子文件夹
-    const tasks = subDirs.map(async (dir) => {
-      const dirName = dir.name;
-      const dirPath = path.join(IMGS_DIR, dirName);
-      const indexPath = path.join(dirPath, 'index.json');
+    // 2. 预检阶段：全部文件夹先跑完（并发），此阶段零写操作——
+    //    一次运行即可看到全部有问题的文件夹，且它们一张派生图都不会留下
+    const preflight = await Promise.all(
+      subDirs.map((dir) => preflightDir(dir.name)),
+    );
+    const ready = preflight.filter((result) => result.images);
+    const failed = preflight.filter((result) => result.reason);
 
-      // --- 强校验：检查 index.json 是否存在并解析 ---
-      let indexConfig;
-      try {
-        const indexContent = await fs.readFile(indexPath, 'utf-8');
-        indexConfig = JSON.parse(indexContent);
-      } catch (err) {
-        throw new Error(
-          `文件夹 [${dirName}] 缺少 index.json 或文件 JSON 格式不正确: ${err.message}`,
-        );
-      }
+    if (failed.length > 0) {
+      reportSkippedDirs(failed);
+      process.exitCode = 1;
+    }
 
-      const coverFileName = indexConfig.index_photo;
-      if (!coverFileName) {
-        throw new Error(
-          `文件夹 [${dirName}] 的 index.json 中未指定 "index_photo"！`,
-        );
-      }
+    // 3. 生成阶段：通过的文件夹照常生成派生图与数据（元数据复用预检结果）
+    const results = await Promise.all(ready.map((result) => buildGroup(result)));
 
-      // 读取当前子文件夹中的所有文件
-      const files = await fs.readdir(dirPath);
-
-      // 过滤出图片文件（剔除带有 _thumb 的已生成缩略图）
-      const imageFiles = files.filter(
-        (file) =>
-          ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-          !file.includes('_thumb'),
+    if (results.length === 0) {
+      // 全军覆没时不覆盖 output.json：否则会把线上已发布的照片数据清空，
+      // 而这次失败本身只需要一份报错，不需要破坏已有产出
+      console.error(
+        '\n[严重错误] 没有任何文件夹通过预检，保留原有 output.json 不予覆盖。',
       );
+      process.exitCode = 1;
+    } else {
+      // 确保输出目录存在
+      await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
 
-      if (imageFiles.length === 0) {
-        throw new Error(`文件夹 [${dirName}] 下没有符合格式的图片文件！`);
-      }
-
-      // 并行处理当前文件夹内的所有图片
-      const photoResults = await Promise.all(
-        imageFiles.map(async (file) => {
-          const filePath = path.join(dirPath, file);
-          const parsed = path.parse(file);
-
-          const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
-          const thumbPath = path.join(dirPath, thumbFileName);
-          const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
-          const displayPath = path.join(dirPath, displayFileName);
-
-          const webViewLink = `${BASE_URL}/${dirName}/${file}`;
-          const thumbnailLink = `${BASE_URL}/${dirName}/${thumbFileName}`;
-          const displayLink = `${BASE_URL}/${dirName}/${displayFileName}`;
-
-          let lat, lng, takenAt, device;
-
-          // 提取 GPS 信息
-          try {
-            const gps = await exifr.gps(filePath);
-            if (
-              gps &&
-              gps.latitude !== undefined &&
-              gps.longitude !== undefined
-            ) {
-              lat = gps.latitude;
-              lng = gps.longitude;
-            } else {
-              console.warn(
-                `[警告] ${dirName}/${file} 缺失 GPS 坐标，已跳过 lat/lng 字段（前端将回退为封面坐标）。可运行 npm run fix-gps 补坐标`,
-              );
-            }
-          } catch (err) {
-            console.warn(
-              `[警告] 解析 ${dirName}/${file} GPS 失败: ${err.message}`,
-            );
-          }
-
-          // 提取原始拍摄时间与设备字段（reviveValues: false 返回 EXIF 原始字符串，
-          // 避免 exifr 转 Date 后 JSON 序列化时被错误地偏移为 UTC 时间）。
-          // 设备字段搭同一次解析顺带取回，不额外多读一遍 EXIF。
-          try {
-            const exif = await exifr.parse(filePath, {
-              pick: ['DateTimeOriginal', 'Make', 'Model'],
-              reviveValues: false,
-            });
-            takenAt = normalizeExifDateTime(exif?.DateTimeOriginal);
-            if (!takenAt) {
-              console.warn(
-                `[警告] ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
-              );
-            }
-            device = classifyDevice(exif?.Make, exif?.Model);
-            if (!device) {
-              // 逐张静默降级，组合收集到收尾汇总里统一报告
-              unidentifiedDevices.add(
-                `${exif?.Make ?? '(缺 Make)'} / ${exif?.Model ?? '(缺 Model)'}`,
-              );
-            }
-          } catch (err) {
-            console.warn(
-              `[警告] 解析 ${dirName}/${file} 拍摄时间/设备失败: ${err.message}`,
-            );
-          }
-
-          // 生成 WebP 缩略图
-          try {
-            await generateThumbnail(filePath, thumbPath);
-          } catch (thumbErr) {
-            console.warn(
-              `[警告] 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
-            );
-          }
-
-          // 生成 WebP 展示图（Lightbox 大图用）
-          try {
-            await generateDisplayImage(filePath, displayPath);
-          } catch (displayErr) {
-            console.warn(
-              `[警告] 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
-            );
-          }
-
-          return {
-            fileName: file,
-            lat,
-            lng,
-            takenAt,
-            device,
-            thumbnailLink,
-            displayLink,
-            webViewLink,
-          };
-        }),
-      );
-
-      const validPhotos = photoResults.filter(Boolean);
-
-      // 寻找 index.json 指定的封面图
-      const primaryPhoto = validPhotos.find(
-        (p) => p.fileName === coverFileName,
-      );
-
-      if (!primaryPhoto) {
-        throw new Error(
-          `文件夹 [${dirName}] 的 index.json 指定的封面图片 "${coverFileName}" 在文件夹中未找到！`,
-        );
-      }
-
-      if (primaryPhoto.lat === undefined || primaryPhoto.lng === undefined) {
-        throw new Error(
-          `文件夹 [${dirName}] 的封面图片 "${coverFileName}" 缺失 GPS 坐标！`,
-        );
-      }
-
-      // 构造 photos 数组，每个图片带上各自的 lat / lng / takenAt
-      const photos = validPhotos.map((p) => {
-        const item = {
-          fileName: p.fileName,
-          thumbnailLink: p.thumbnailLink,
-          displayLink: p.displayLink,
-          webViewLink: p.webViewLink,
-        };
-        if (p.lat !== undefined && p.lng !== undefined) {
-          item.lat = p.lat;
-          item.lng = p.lng;
-        }
-        if (p.takenAt) {
-          item.takenAt = p.takenAt;
-        }
-        if (p.device) {
-          item.device = p.device;
-        }
-        return item;
-      });
-
-      // 返回当前文件夹聚合后的数据结构
-      return {
-        lat: primaryPhoto.lat,
-        lng: primaryPhoto.lng,
-        thumbnailLink: primaryPhoto.thumbnailLink,
-        displayLink: primaryPhoto.displayLink,
-        webViewLink: primaryPhoto.webViewLink,
-        fileName: primaryPhoto.fileName,
-        dirName: dirName,
-        ...(indexConfig.description
-          ? { description: indexConfig.description }
-          : {}),
-        ...(primaryPhoto.takenAt ? { takenAt: primaryPhoto.takenAt } : {}),
-        photos: photos,
-      };
-    });
-
-    // 3. 等待所有子文件夹处理完毕
-    const results = await Promise.all(tasks);
-
-    // 确保输出目录存在
-    await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
-
-    // 4. 将数组写入 JSON 文件
-    await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
+      // 4. 将数组写入 JSON 文件
+      await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
+    }
 
     // 5. 数据一致性检查（只报告，不影响退出码）
     await reportInconsistencies(subDirs.map((dir) => dir.name));
 
     // 6. 设备类型识别汇总（只报告，不影响退出码）
-    reportDeviceTypes(results.flatMap((group) => group.photos));
+    if (results.length > 0) {
+      reportDeviceTypes(results.flatMap((group) => group.photos));
+    }
 
-    console.log(`\n处理完成！共生成 ${results.length} 条文件夹数据。`);
-    console.log(`结果已保存至: ${OUTPUT_FILE}`);
+    console.log(
+      results.length === 0
+        ? '\n本轮没有任何文件夹产出数据（见上）。'
+        : `\n处理完成！共生成 ${results.length} 条文件夹数据` +
+            (failed.length > 0 ? `，跳过 ${failed.length} 个（见上）。` : '。'),
+    );
+    if (results.length > 0) {
+      console.log(`结果已保存至: ${OUTPUT_FILE}`);
+    }
     console.log(
       `耗时: ${formatDuration(Date.now() - startTime)}（结束时间 ${new Date().toLocaleString('zh-CN', { hour12: false })}）`,
     );
@@ -541,7 +654,7 @@ async function processAllPhotos() {
     console.error(`\n[严重错误] ${error.message}`);
     console.error('任务处理失败，脚本已终止执行。');
     console.error(`已耗时: ${formatDuration(Date.now() - startTime)}`);
-    process.exit(1); // 遇到缺失 index.json 或其他错误时直接报错退出
+    process.exit(1); // 根目录不可读等致命错误才走这里，文件夹级问题已在预检中跳过
   }
 }
 

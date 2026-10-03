@@ -1,8 +1,11 @@
 /**
  * fix-gps.js — 交互式补 GPS 坐标工具
  *
- * 为缺失 EXIF GPS 的照片从同地点参照照片复制坐标，写入原图。
- * 计划文档：docs/plans/2026-09-26-fix-gps.md（决策依据见该文件）
+ * 为缺失 EXIF GPS 的照片从同地点参照照片复制坐标，写入原图。除坐标外还会写一个
+ * 溯源标记（GPSProcessingMethod：`hcm-geosource ref=<参照> date=<日期>`），让管线
+ * 能在 output.json 里区分"原生坐标"与"复制坐标"；同时刻意不复制参照的
+ * GPSHPositioningError（避免相机照声称拥有手机的定位精度）。
+ * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md
  *
  * 用法：
  *   npm run fix-gps                                       全量扫描所有文件夹
@@ -295,6 +298,24 @@ function waitKey() {
 // 写入与验证
 // ---------------------------------------------------------------------------
 
+// 坐标溯源标记：写进标准 EXIF 标签 GPSProcessingMethod（该标签的语义就是
+// "坐标是怎么来的"）。格式 `hcm-geosource ref=<参照文件名> date=<写入日期>`，
+// 与 process-photos.js 的 parseGeoSource() 是一对契约，改格式要两边一起改。
+// 前缀不能省——相机会自己写这个标签（如 "GPS" / "Apple"），没有前缀无法区分
+// 原生坐标与复制坐标。
+// 选它是实测结果：exifr 能从 JPEG 与 HEIC 的 GPS 块直接读到它（同一张照片一次
+// 解析即可），而 XMP 侧的字段 exifr 读不到 HEIC 的 XMP，自定义 XMP 命名空间又
+// 需要用户级 exiftool 配置。
+const GEO_SOURCE_PREFIX = 'hcm-geosource';
+
+/** 生成溯源标记值：`hcm-geosource ref=<参照文件名> date=<YYYY-MM-DD>` */
+function buildGeoSourceValue(refFileName) {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${GEO_SOURCE_PREFIX} ref=${refFileName} date=${date}`;
+}
+
 async function writeGps(target, ref) {
   const args = [
     '-overwrite_original',
@@ -306,7 +327,10 @@ async function writeGps(target, ref) {
     '-GPSLongitudeRef',
     '-GPSAltitude',
     '-GPSAltitudeRef',
-    '-GPSHPositioningError',
+    // 刻意不复制 GPSHPositioningError：它是参照照片那次定位的误差值，照搬过去等于
+    // 让相机照声称拥有手机的定位精度，而真相是"同址推断"——宁缺毋假，该字段留空
+    // 溯源标记：记录参照文件名与写入日期
+    `-GPSProcessingMethod=${buildGeoSourceValue(ref.fileName)}`,
     target.filePath,
   ];
   await execFileAsync('exiftool', args);
@@ -653,7 +677,9 @@ async function printSummary(written, skipped, writtenList) {
   console.log(`写入: ${written} 张${writtenList.length ? `（${writtenList.join('、')}）` : ''}`);
   console.log(`跳过: ${skipped} 张`);
   if (written > 0) {
-    console.log('下一步：运行 npm run photos 重新生成数据，确认 GPS 警告消失。');
+    console.log(
+      '下一步：运行 npm run photos 重新生成数据（若仍有照片缺坐标，该文件夹会被整体跳过并报错）。',
+    );
   }
 }
 

@@ -73,7 +73,9 @@ agent 本会话自建的临时文件）。
 - 技术栈：React 18 + react-scripts 5（CRA）、AMap（@uiw/react-amap）、GitHub Pages
 - 构建产物：`src/Application/output.json` 勿手改（由 `npm run photos` 生成）
 - 工具链坑 → `docs/toolchain.md`
-- 照片管线（EXIF/GPS、HEIC 转码、缩略图/展示图档位）→ `docs/data-pipeline.md`
+- 照片管线（HEIC 转码、缩略图/展示图档位、删除照片、一致性报告）→ `docs/data-pipeline.md`
+- 照片元数据（GPS 硬拦口径、坐标溯源 `geoSource`、设备 `device` 分类）→ `docs/photo-metadata.md`
+- 拍摄与整理工作流 / 产品定义（手机锚点照、相机主体、标准流程）→ `docs/photo-workflow.md`
 - 应用结构 / demo 分发机制 → `docs/app-structure.md`
 - AMap API 等领域链接 → `DEVELOP.md`（用户手动维护，agent 不改写）
 - 决策记录 → `docs/plans/`（P1）

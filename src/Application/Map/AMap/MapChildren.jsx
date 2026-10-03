@@ -11,9 +11,22 @@ import styles from './MapChildren.module.css'; // 使用 CSS Modules 引入引�
 import CityChips from './CityChips';
 import LightboxInfoPanel from './LightboxInfoPanel';
 
+// 数据异常时的显式报错（不是静默兜底）：缺坐标的照片不进 marker 列表。
+// 关键约束：undefined 一旦进入 AMap.convertFrom 的坐标数组，可能导致整批转换失败、
+// 所有 marker 都不渲染，所以宁可丢掉这一项并且报出来。
+const reportMissingCoord = (label) => {
+  console.error(
+    `[数据异常] ${label} 缺坐标，已跳过该 marker（请重跑 npm run photos）`,
+  );
+};
+
 function flattenPhotos(data) {
   return data.flatMap((group) => {
     if (!group.photos || group.photos.length === 0) {
+      if (group.lat === undefined || group.lng === undefined) {
+        reportMissingCoord(`${group.dirName}/${group.fileName}`);
+        return [];
+      }
       return [
         {
           lat: group.lat,
@@ -34,18 +47,29 @@ function flattenPhotos(data) {
       ];
     }
 
-    return group.photos.map((photo) => ({
-      lat: photo.lat ?? group.lat,
-      lng: photo.lng ?? group.lng,
-      takenAt: photo.takenAt,
-      device: photo.device,
-      fileName: photo.fileName,
-      thumbnailLink: photo.thumbnailLink,
-      displayLink: photo.displayLink,
-      webViewLink: photo.webViewLink,
-      dirName: group.dirName,
-      coverFileName: group.fileName,
-    }));
+    // 坐标一律取照片自身的值，不做 `photo.lat ?? group.lat` 回退：回退会把"还没补
+    // 坐标的中间态"伪装成"已降级"，让缺坐标的照片被钉到封面坐标上、在地图上表现为
+    // 假位置。管线的预检已保证产出数据里不存在缺坐标项，这里只作数据异常兜底。
+    return group.photos.flatMap((photo) => {
+      if (photo.lat === undefined || photo.lng === undefined) {
+        reportMissingCoord(`${group.dirName}/${photo.fileName}`);
+        return [];
+      }
+      return [
+        {
+          lat: photo.lat,
+          lng: photo.lng,
+          takenAt: photo.takenAt,
+          device: photo.device,
+          fileName: photo.fileName,
+          thumbnailLink: photo.thumbnailLink,
+          displayLink: photo.displayLink,
+          webViewLink: photo.webViewLink,
+          dirName: group.dirName,
+          coverFileName: group.fileName,
+        },
+      ];
+    });
   });
 }
 
