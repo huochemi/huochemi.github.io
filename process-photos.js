@@ -19,6 +19,17 @@ const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
 // /data 挂载到本地 data 仓库，无需先提交 data repo 即可预览
 const BASE_URL = '/data/photos';
 
+// 终端着色：只给"需要你处理 / 注意"的级别行上色——红 = ⛔❌（错误，须处理）、
+// 黄 = ⚠️❗⏭️（有问题或本轮未产出，须注意）；其余级别与全部上下文行保持素文本，
+// 否则每行都有装饰时，报错反而不显眼。
+// 非 TTY（管道 / 重定向到文件）或 NO_COLOR 时不输出 ANSI 转义码，避免污染日志。
+const COLOR_ENABLED =
+  Boolean(process.stdout.isTTY) && !('NO_COLOR' in process.env);
+const color = {
+  red: (s) => (COLOR_ENABLED ? `\x1b[31m${s}\x1b[39m` : s),
+  yellow: (s) => (COLOR_ENABLED ? `\x1b[33m${s}\x1b[39m` : s),
+};
+
 // 缩略图配置：300x300 px（适配 2x/3x 高分屏）
 const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
@@ -217,7 +228,7 @@ async function generateDisplayImage(inputPath, outputPath) {
  *
  * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` 找不到同名原图。
  * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
- * 报告用 `[不一致]` 前缀而非 `[跳过]`，与"未通过预检的文件夹"这一层判定区分开
+ * 报告用 ❗ 前缀而非 ⏭️，与"未通过预检的文件夹"这一层判定区分开
  * （后者会改退出码，孤儿文件只报告、不改退出码）。
  *
  * @param {string[]} dirNames 照片文件夹名列表
@@ -258,17 +269,19 @@ async function reportInconsistencies(dirNames) {
 
   console.log('\n数据一致性检查：');
   if (orphans.length === 0) {
-    console.log('  [通过] 未发现孤儿派生文件。');
+    console.log('  ✅ 未发现孤儿派生文件。');
     return;
   }
 
   console.log(
-    `  [不一致] 发现 ${orphans.length} 个孤儿派生文件（无对应原图，会随 data 仓库一起部署）：`,
+    color.yellow(
+      `  ❗ 发现 ${orphans.length} 个孤儿派生文件（无对应原图，会随 data 仓库一起部署）：`,
+    ),
   );
   for (const orphan of orphans) {
     console.log(`    ${orphan.dirName}/${orphan.file}`);
   }
-  console.log('  [建议] 确认后自行清理（本脚本不删除任何文件）：');
+  console.log('  💡 确认后自行清理（本脚本不删除任何文件）：');
   console.log(`    rm ${orphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
 }
 
@@ -280,7 +293,7 @@ const unidentifiedDevices = new Set();
  *
  * 逐张照片静默降级（未识别不写 device 字段、角标不显示图标），只在收尾汇总
  * 一次并列出来识别组合——否则新增设备品牌只会无声无息地不显示图标。
- * 前缀用 `[提示]` 而非 `[跳过]`，与"未通过预检的文件夹"这一层判定区分开
+ * 前缀用 ℹ️ 而非 ⏭️，与"未通过预检的文件夹"这一层判定区分开
  * （后者会改退出码，未识别设备只报告、不改退出码）。
  *
  * @param {object[]} photos 全部文件夹下的照片对象（已展平）
@@ -296,11 +309,11 @@ function reportDeviceTypes(photos) {
   console.log('\n设备类型识别：');
   console.log(`  📱 手机 ${phone} 张 / 📷 相机 ${camera} 张`);
   if (unidentifiedDevices.size === 0) {
-    console.log('  [通过] 全部照片均已识别。');
+    console.log('  ✅ 全部照片均已识别。');
     return;
   }
   console.log(
-    `  [提示] 未识别 ${photos.length - phone - camera} 张（未写 device 字段，角标不显示图标），` +
+    `  ℹ️ 未识别 ${photos.length - phone - camera} 张（未写 device 字段，角标不显示图标），` +
       '分类表可能需补充：',
   );
   for (const combo of unidentifiedDevices) {
@@ -316,6 +329,12 @@ function reportDeviceTypes(photos) {
 // 坐标"与原生坐标区分开。前缀必须存在——相机会自己写该标签（如 "GPS" / "Apple"），
 // 没有前缀就无法区分。
 const GEO_SOURCE_PREFIX = 'hcm-geosource';
+
+// 同位置锚点合并的距离判据（米）：相距小于此值的锚点视为"同一处"。
+// **与 fix-gps.js 的同名常量必须保持一致**——那边据此把锚点合并成"处"并在审阅页
+// 分组，这里的 describeAnchorSpread 据此数"落在几处"，口径不一致会让 photos 的
+// 提示与审阅页的分组互相矛盾（两个脚本各自独立，不为一个常量引入共享模块）
+const ANCHOR_MERGE_METERS = 5;
 
 // 预检的 EXIF 解析配置：一次 parse 取回坐标、拍摄时间、设备、溯源的全部字段
 // （沿用既有原则：同一张照片不重复读 EXIF）。分块 pick 是必需的——顶层 pick 会把
@@ -370,6 +389,54 @@ function parseGeoSource(raw) {
   if (!text || !text.startsWith(GEO_SOURCE_PREFIX)) return undefined;
   const match = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
   return match ? match[1] : 'unknown';
+}
+
+/**
+ * 描述预检发现的锚点照片在空间上的分散程度（预检失败 hint 用）。
+ * 锚点落在多处时逐张指定参照不现实，用户应走 --review 审阅页，这条摘要
+ * 帮用户在跑命令前就对"要分几组"有数。
+ * 判据与 fix-gps.js 的 ANCHOR_MERGE_METERS 一致（相距 < 5 m 视为同一处）——
+ * 那边据此把锚点合并成"处"并在审阅页分组，口径不同会让提示与页面互相矛盾。
+ * @param {{meta: {lat: number, lng: number}}[]} refs 带坐标的照片列表
+ * @returns {string} 如 "落在 2 处、最远相距 114 m"；单处时为 "（同一处）"
+ */
+function describeAnchorSpread(refs) {
+  const pts = refs.map((r) => ({ lat: r.meta.lat, lng: r.meta.lng }));
+  // 并查集聚类（支持链式邻近：A-B、B-C 相邻则 A/B/C 同处）
+  const parent = pts.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      if (haversineMeters(pts[i], pts[j]) < ANCHOR_MERGE_METERS) {
+        parent[find(j)] = find(i);
+      }
+    }
+  }
+  const reps = new Map(); // 每处以簇内第一张为代表
+  pts.forEach((p, i) => {
+    if (!reps.has(find(i))) reps.set(find(i), p);
+  });
+  const spots = [...reps.values()];
+  if (spots.length <= 1) return '（同一处）';
+  let max = 0;
+  for (let i = 0; i < spots.length; i++) {
+    for (let j = i + 1; j < spots.length; j++) {
+      max = Math.max(max, haversineMeters(spots[i], spots[j]));
+    }
+  }
+  return `落在 ${spots.length} 处、最远相距 ${Math.round(max)} m`;
+}
+
+/** 球面距离（米）。与 fix-gps.js 的同名函数保持一致（两脚本各自独立，未模块化） */
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const rad = (x) => (x * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 /**
@@ -466,10 +533,10 @@ async function preflightDir(dirName) {
       (image) => image.meta.lat === undefined || image.meta.lng === undefined,
     );
     if (missing.length > 0) {
-      // 批量提示：文件夹内恰好有 1 张带坐标照片时，直接给出含参照文件名的批量
-      // 命令（fix-gps --all）。0 张无法批量；≥2 张时选哪张作参照是用户的判断，
-      // 不替用户拍板，维持只提示交互命令。排除 _display 与 fix-gps 的扫描口径
-      // 对齐（_thumb 本就被 imageFiles 过滤）。
+      // 批量提示按锚点数量分档：0 张无法批量；1 张时参照无歧义，直接给出含参照
+      // 文件名的 --all 批量命令；≥2 张时选哪张作参照是分组决策（可能落在多处），
+      // 不替用户拍板，改为给出 --review 审阅页命令（页面调整分组后一次写入）。
+      // 排除 _display 与 fix-gps 的扫描口径对齐（_thumb 本就被 imageFiles 过滤）。
       const refs = images.filter(
         (image) =>
           image.meta.lat !== undefined &&
@@ -481,6 +548,11 @@ async function preflightDir(dirName) {
         hint +=
           `\n或批量复制坐标（将 ${refs[0].file} 的坐标写入其余 ${missing.length} 张）：` +
           `\n    npm run fix-gps -- "${dirName}" --ref ${refs[0].file} --all`;
+      } else if (refs.length >= 2) {
+        hint +=
+          `\n或生成分组审阅页（${refs.length} 张锚点${describeAnchorSpread(refs)}，` +
+          '页面定好分组后一次写入）：' +
+          `\n    npm run fix-gps -- "${dirName}" --review`;
       }
       return {
         dirName,
@@ -518,7 +590,9 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         await generateThumbnail(filePath, path.join(dirPath, thumbFileName));
       } catch (thumbErr) {
         console.warn(
-          `[警告] 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
+          color.yellow(
+            `⚠️ 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
+          ),
         );
       }
 
@@ -527,13 +601,17 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         await generateDisplayImage(filePath, path.join(dirPath, displayFileName));
       } catch (displayErr) {
         console.warn(
-          `[警告] 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
+          color.yellow(
+            `⚠️ 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
+          ),
         );
       }
 
       if (!meta.takenAt) {
         console.warn(
-          `[警告] ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
+          color.yellow(
+            `⚠️ ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
+          ),
         );
       }
 
@@ -589,7 +667,9 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
 
 /** 打印未通过预检的文件夹清单（一行一个，附下一步命令） */
 function reportSkippedDirs(failed) {
-  console.log(`\n[跳过] ${failed.length} 个文件夹未通过预检，本轮不产出数据：`);
+  console.log(
+    color.yellow(`\n⏭️ ${failed.length} 个文件夹未通过预检，本轮不产出数据：`),
+  );
   for (const { dirName, reason, hint } of failed) {
     console.log(`  ${dirName}：${reason}`);
     if (hint) console.log(`    ${hint}`);
@@ -635,7 +715,7 @@ async function processAllPhotos() {
       // 全军覆没时不覆盖 output.json：否则会把线上已发布的照片数据清空，
       // 而这次失败本身只需要一份报错，不需要破坏已有产出
       console.error(
-        '\n[严重错误] 没有任何文件夹通过预检，保留原有 output.json 不予覆盖。',
+        color.red('\n⛔ 没有任何文件夹通过预检，保留原有 output.json 不予覆盖。'),
       );
       process.exitCode = 1;
     } else {
@@ -656,7 +736,7 @@ async function processAllPhotos() {
 
     console.log(
       results.length === 0
-        ? '\n本轮没有任何文件夹产出数据（见上）。'
+        ? color.yellow('\n⚠️ 本轮没有任何文件夹产出数据（见上）。')
         : `\n处理完成！共生成 ${results.length} 条文件夹数据` +
             (failed.length > 0 ? `，跳过 ${failed.length} 个（见上）。` : '。'),
     );
@@ -667,7 +747,7 @@ async function processAllPhotos() {
       `耗时: ${formatDuration(Date.now() - startTime)}（结束时间 ${new Date().toLocaleString('zh-CN', { hour12: false })}）`,
     );
   } catch (error) {
-    console.error(`\n[严重错误] ${error.message}`);
+    console.error(color.red(`\n⛔ ${error.message}`));
     console.error('任务处理失败，脚本已终止执行。');
     console.error(`已耗时: ${formatDuration(Date.now() - startTime)}`);
     process.exit(1); // 根目录不可读等致命错误才走这里，文件夹级问题已在预检中跳过

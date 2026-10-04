@@ -30,11 +30,15 @@ const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
 const THUMB_SUFFIX = '_thumb.webp';
 const DISPLAY_SUFFIX = '_display.webp';
 
+// 非 TTY（管道 / 重定向到文件）或 NO_COLOR 时不着色，避免日志混入 ANSI 转义码
+const COLOR_ENABLED =
+  Boolean(process.stdout.isTTY) && !('NO_COLOR' in process.env);
+const paint = (code, s) => (COLOR_ENABLED ? `\x1b[${code}m${s}\x1b[39m` : s);
 const color = {
-  red: (s) => `\x1b[31m${s}\x1b[39m`,
-  green: (s) => `\x1b[32m${s}\x1b[39m`,
-  yellow: (s) => `\x1b[33m${s}\x1b[39m`,
-  cyan: (s) => `\x1b[36m${s}\x1b[39m`,
+  red: (s) => paint(31, s),
+  green: (s) => paint(32, s),
+  yellow: (s) => paint(33, s),
+  cyan: (s) => paint(36, s),
 };
 
 function printUsage() {
@@ -164,7 +168,7 @@ async function deletePhoto(dirName, fileName) {
       );
     }
   }
-  console.log(color.green(`✓ 已删除 ${targets.length} 个文件`));
+  console.log(color.green(`✅ 已删除 ${targets.length} 个文件`));
 }
 
 /**
@@ -174,7 +178,7 @@ async function deletePhoto(dirName, fileName) {
 function printReminder() {
   console.log(
     color.yellow(
-      '\n⚠ output.json 尚未更新 —— 请执行 npm run photos，再提交 ../data 与本站点两个仓库',
+      '\n⚠️ output.json 尚未更新 —— 请执行 npm run photos，再提交 ../data 与本站点两个仓库',
     ),
   );
 }
@@ -182,7 +186,11 @@ function printReminder() {
 async function main() {
   const args = process.argv.slice(2);
   if (args.length !== 2) {
-    console.error(color.red(`✖ 参数数量不对：需要 2 个（文件夹名、文件名），实际 ${args.length} 个\n`));
+    console.error(
+      color.red(
+        `❌ 参数数量不对：需要 2 个（文件夹名、文件名），实际 ${args.length} 个\n`,
+      ),
+    );
     printUsage();
     process.exit(1);
   }
@@ -202,6 +210,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(color.red(`\n✖ ${err.message}`));
+  console.error(color.red(`\n❌ ${err.message}`));
   process.exit(1);
 });

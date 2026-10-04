@@ -56,9 +56,12 @@ agent 本会话自建的临时文件）。
 
 ## 流程
 
-1. **改代码** → `./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0`
+1. **改代码** → `./node_modules/.bin/eslint src test --ext .js,.jsx,.ts,.tsx --max-warnings=0`
    再交付。不允许留任何 warning、不用 eslint-disable 压制，修根因——CI（`CI=true`）
    把 warning 当 error，pre-push 钩子同样拒绝推送
+   - `test/` 是 CLI 脚本（`fix-gps.js` 等）的单测，跑法 `npm run test:cli`
+     （node 内置 runner，**不是** CRA jest——`react-scripts test` 的 roots 只有
+     `src/`，两者互不干扰）
 2. **CI 验证** → `CI=true ./node_modules/.bin/react-scripts build`；报 EEXIST 删
    `node_modules/.cache` 重试，别动 `build/`
 3. **知识回写** → 新坑/新知识写入 `docs/` 对应域文件（无对应文件按域新建；单文件超

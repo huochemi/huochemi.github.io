@@ -33,6 +33,21 @@
    带坐标照片"时会直接给出这条含参照文件名的命令）。命令可安全重跑：
    已写入的照片不会进目标列表，工具永不覆盖已有坐标。
    计划文档：`docs/plans/2026-10-03-fix-gps-batch-mode.md`
+   **锚点落在多处**（≥2 张带坐标且坐标不重合）时逐张指定参照不现实——走分组审阅页
+   （2026-10-03 新增）：`npm run fix-gps -- <地点> --review` 生成只读页面并打开
+   （真实时间比例密度条 + 等距胶片条按拍摄时间铺开、GPS 三态标识、点图与位置代表
+   并排对照）；页面调好分组后点「复制写入命令」（按钮把 JSON 压缩为单行内嵌进
+   `echo '<json>' | npm run fix-gps -- <地点> --plan-stdin`，单引号按 shell 规则
+   转义——JSON 与命令合并成**一次**剪贴板写入，避免"复制 JSON 后又复制命令把它
+   覆盖"的单槽竞态），回终端直接粘贴回车、一次确认写入全部。
+   **同位置锚点自动合并**（2026-10-04 新增）：相距 < 5 米的锚点视为"同一处"并为
+   一组（`ANCHOR_MERGE_METERS`，判据与 `process-photos.js` 的同名常量必须一致），
+   组代表取组内最早拍摄的那张——同地点连拍多张手机照不再各自成组，页面统计不再
+   出现 0 张空组，plan 的 `ref` 用代表（组内坐标相差 ≤ 5 m，属 GPS 噪声级）。
+   `npm run photos` 预检提示按锚点数量分档给命令：1 张 → `--all`；≥2 张 →
+   `--review`，并附摘要（如"5 张锚点落在 2 处、最远相距 114 m"，判据同 5 米）。
+   计划文档：`docs/plans/2026-10-03-fix-gps-review-page.md`、
+   `docs/plans/2026-10-04-fix-gps-cleanup-and-anchor-merge.md`
 3. 维护 `index.json`（`index_photo` 指定封面、可选 `description`）
 4. `npm run photos`：生成派生图 + `src/Application/output.json`
 5. 两个仓库（站点 / data）分别提交

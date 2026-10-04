@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fix-gps 分组审阅</title>
+<!--
+  fix-gps 分组审阅页模板（由 `npm run fix-gps -- <文件夹> --review` 注入数据后打开）
+  本页面只读：不写任何照片。数据层已把同位置锚点（相距 < 5 m）合并成组——anchors
+  每项 = 一处位置，含 members（组内全部锚点文件名）。调整分组后点「复制写入命令」
+  （一行 `echo '<JSON>' | … --plan-stdin`），回终端粘贴回车再按 y 完成写入。
+  设计原型与选型记录：docs/plans/2026-10-03-fix-gps-review-page.md
+  同位置合并与清理：docs/plans/2026-10-04-fix-gps-cleanup-and-anchor-merge.md
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #1e1e1e; color: #ddd;
+         font: 14px/1.6 system-ui, -apple-system, "PingFang SC", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; padding: 14px 20px;
+           background: rgba(30,30,30,0.94); border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 4px 20px 60px; }
+  h1 { font-size: 18px; font-weight: 500; margin: 0 0 6px; }
+  h2 { font-size: 15px; font-weight: 500; margin: 30px 0 8px; }
+  .sub { font-size: 13px; color: #999; }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .pill { font-size: 12px; color: #bbb; background: #262626;
+          border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 3px 10px; }
+  .pill.ro { color: #85B7EB; background: rgba(55,138,221,0.12); border-color: rgba(55,138,221,0.5); }
+  .pill.warn { color: #FAC775; background: rgba(239,159,39,0.12); border-color: rgba(239,159,39,0.45); }
+  .hint { font-size: 12px; color: #888; margin: -2px 0 12px; }
+  button { font: inherit; font-size: 12px; color: #ddd; background: #2f2f2f; cursor: pointer;
+           border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 5px 10px; }
+  button:hover { background: #3a3a3a; }
+  button.primary { background: rgba(55,138,221,0.18); border-color: #378ADD; color: #B5D4F4; }
+  .chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .chip { display: flex; gap: 12px; align-items: center; background: #262626;
+          border: 1px solid rgba(255,255,255,0.08); border-left-width: 3px; border-radius: 10px; padding: 10px 12px; }
+  .chip img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: #3a3a3a; }
+  .chip .name { font-size: 13px; font-weight: 500; }
+  .chip .coord { font-size: 12px; color: #999; margin-top: 2px; }
+  .chip .count { font-size: 12px; color: #bbb; margin-top: 4px; }
+  .chip .act { margin-left: auto; display: flex; flex-direction: column; gap: 6px; }
+  .split { display: flex; align-items: center; gap: 12px; margin-top: 12px; background: #262626;
+           border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px;
+           font-size: 12px; color: #aaa; }
+  .split input[type=range] { flex: 1; accent-color: #378ADD; }
+  .split b { color: #ddd; font-weight: 500; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+  .card { background: #2a2a2a; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 6px; }
+  .thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #3a3a3a;
+           border-radius: 7px; overflow: hidden; cursor: zoom-in; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tag { position: absolute; top: 5px; left: 5px; font-size: 11px; border-radius: 5px;
+         padding: 1px 6px; background: rgba(0,0,0,0.66); }
+  .name { font-size: 11px; color: #bbb; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 11px; margin-top: 3px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .badge.doubt { color: #FAC775; }
+  .time { font-size: 11px; color: #777; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #EF9F27; display: inline-block; }
+  pre { background: #181818; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+        padding: 12px; overflow: auto; margin: 0 0 10px;
+        font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cfcfcf; }
+  pre em { color: #85B7EB; font-style: normal; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .toggle { font-size: 12px; color: #aaa; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .note { background: #262626; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+          padding: 12px; font-size: 12px; color: #aaa; }
+  .note b { color: #ddd; font-weight: 500; }
+  .map { background: #262626; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; }
+  .empty { font-size: 12px; color: #888; padding: 20px; }
+  /* ---- 时间轴总览（密度条 + 胶片条） ---- */
+  .tl-wrap { background: #262626; border: 1px solid rgba(255,255,255,0.08);
+             border-radius: 10px; padding: 12px; }
+  .tl-density { width: 100%; height: 64px; display: block; }
+  .tl-legend { font-size: 11px; color: #888; margin-top: 8px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .tl-legend .lg { display: flex; gap: 5px; align-items: center; }
+  .tl-legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .tl-strip { display: flex; gap: 6px; overflow-x: auto; padding: 12px 2px 6px; }
+  .tcard { flex: 0 0 auto; width: 86px; background: #2a2a2a;
+           border: 1px dashed rgba(255,255,255,0.22); border-radius: 8px;
+           padding: 4px; cursor: zoom-in; transition: outline 0.15s; }
+  .tcard.anchor { border-style: solid; border-width: 2px; }
+  .tcard.flash { outline: 2px solid #fff; }
+  .tcard img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px;
+               display: block; background: #3a3a3a; }
+  .tcard .noimg { width: 100%; aspect-ratio: 4/3; border-radius: 6px; background: #333;
+                  display: flex; align-items: center; justify-content: center;
+                  font-size: 10px; color: #777; text-align: center; padding: 4px; }
+  .tcard .tf { font-size: 10px; color: #999; margin-top: 4px;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tcard .tt { font-size: 10px; color: #666; }
+  .tbadge { font-size: 10px; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+  /* 颜色只编码"归属哪个组"（组色）；有无坐标由 📍/📋/→ 图标 + 实/虚边框编码 */
+  .overlay { position: fixed; inset: 0; z-index: 9; background: rgba(10,10,10,0.88);
+             display: flex; flex-direction: column; padding: 18px 20px; }
+  /* hidden 属性的隐藏来自浏览器默认样式，会被上面的 display:flex 覆盖，
+     必须显式声明，否则弹窗从页面加载起就常显（空框挡住全部内容） */
+  .overlay[hidden] { display: none; }
+  .overlay .bar { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #aaa; margin-bottom: 10px; }
+  /* 归属选择条：一次点击直达目标锚点（替代循环按钮） */
+  .assignbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+               font-size: 12px; color: #aaa; margin-bottom: 12px; }
+  .assignbar[hidden] { display: none; }
+  .assignbar .abtn { font: inherit; font-size: 12px; font-weight: 600; line-height: 1;
+                     min-width: 30px; padding: 5px 8px; border-radius: 6px;
+                     color: #ddd; background: #2f2f2f; border: 1px solid #444; }
+  .assignbar .abtn:hover { background: #3a3a3a; }
+  .assignbar .abtn.on { color: #111; }
+  .assignbar .ahint { color: #777; }
+  .overlay .pair { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .frame { background: #262626; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; min-height: 0;
+           border: 1px solid rgba(255,255,255,0.14); }
+  .frame img { width: 100%; flex: 1; min-height: 0; object-fit: contain; background: #111; border-radius: 8px; }
+  .frame .meta { font-size: 12px; color: #aaa; margin-top: 8px; }
+  .frame .meta strong { color: #ddd; font-weight: 500; }
+  /* ---- 帮助面板（? 使用说明） ---- */
+  .helpbtn { float: right; margin-left: 12px; }
+  .help { position: fixed; inset: 0; z-index: 10; background: rgba(10,10,10,0.7);
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 40px 16px; overflow: auto; }
+  .help[hidden] { display: none; }
+  .help .panel { background: #242424; border: 1px solid rgba(255,255,255,0.14); border-radius: 12px;
+                 max-width: 660px; width: 100%; padding: 18px 20px 10px; font-size: 13px; }
+  .help h3 { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: #ddd; }
+  .help p { margin: 2px 0 8px; color: #aaa; }
+  .help b { color: #ddd; font-weight: 500; }
+  .help .kbd { font: 12px ui-monospace, Menlo, monospace; background: #1a1a1a;
+               border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; padding: 1px 6px; color: #cfcfcf; }
+  .help .tip { color: #FAC775; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap" style="padding-bottom:4px">
+    <button id="helpBtn" class="helpbtn" title="忘了某个按钮是做什么的？点这里查看完整使用说明">? 使用说明</button>
+    <h1 id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="stats" id="stats"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <h2>1 · 时间轴总览（密度条 + 胶片条）</h2>
+  <div class="hint">上：真实时间比例的密度条，柱越高 = 拍得越密集；<b>点柱跳到下方对应照片</b>。下：等距胶片条，横向滚动，任何密度下都不重叠。<b>颜色只表示归属的位置</b>（相距 5 m 内的锚点已并为同一处）；📍 = 原生 GPS、📋 = 复制坐标、→ = 待补；实框 = 有坐标，虚线框 = 待补。</div>
+  <div class="tl-wrap">
+    <svg id="density" class="tl-density"></svg>
+    <div class="tl-legend">
+      <span class="lg">颜色 = 归属的位置</span>
+      <span class="lg">同一处的锚点（相距 &lt; 5 m）合并为一组，组代表取组内最早拍摄的那张</span>
+      <span class="lg"><span class="sw" style="border:1px solid rgba(255,255,255,0.55)"></span>实框 = 有坐标（提供方）</span>
+      <span class="lg">📍 = 原生 GPS　📋 = 复制坐标（此前从参照写入）　→ = 待补　⚠ = 与位置时间差超过 60 秒（建议点开对照）</span>
+      <span class="lg"><span class="sw" style="border:1px dashed rgba(255,255,255,0.4)"></span>虚线框 = 待补坐标</span>
+    </div>
+    <div class="tl-strip" id="tstrip"></div>
+  </div>
+
+  <h2>2 · 分组审阅</h2>
+  <div class="hint">每组 = <b>一处位置</b>（相距 5 m 内的锚点自动并为一组，组代表取组内最早拍摄的那张）。点缩略图可与该位置代表并排对照；点徽章可循环改投；恰好两处位置时可拖分界线整段重分。</div>
+  <div class="chips" id="chips"></div>
+  <div class="split" id="split"></div>
+
+  <h2>3 · 照片（按拍摄时间）</h2>
+  <div class="row">
+    <label class="toggle" title="筛出与所属锚点时间差超过 60 秒的照片——这些才最需要点开对照确认"><input type="checkbox" id="onlyDoubt"> 只看时间差大的（与所属锚点相差 > 60 秒）</label>
+    <span class="pill warn" id="doubtPill"></span>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <h2>4 · 将写入的分组计划</h2>
+  <div class="hint">调整满意后：点「复制写入命令」→ 回终端粘贴、回车 → 打印分组摘要后按一次 y 写入全部。命令自带 JSON（单行压缩），剪贴板只复制这一次。</div>
+  <pre id="planCmd"></pre>
+  <div class="row">
+    <button id="copyBtn" title="复制一行完整的写入命令（echo JSON | fix-gps），回终端直接粘贴回车，不要再复制其他内容">复制写入命令</button>
+  </div>
+  <pre id="planJson"></pre>
+
+  <h2>5 · 位置相对分布（离线示意）</h2>
+  <div class="map" id="map"></div>
+  <div class="note" style="margin-top:12px">
+    <b>这是按经纬度等比绘制的相对位置，不是地图底图。</b>它只回答一个问题：各处之间离得多远，
+    分组时心里有数。此处已按"同一处"合并过（相距 5 m 内算一处），跨多远的距离仍算"同一处"，是你的判断。
+  </div>
+
+</div>
+
+<div class="help" id="help" hidden>
+  <div class="panel">
+    <div style="display:flex;align-items:center;gap:12px">
+      <b style="font-size:14px">使用说明</b>
+      <span style="flex:1"></span>
+      <button id="helpClose">关闭 (Esc)</button>
+    </div>
+    <h3>这个页面是干什么的</h3>
+    <p>把带 GPS 照片（锚点）的坐标分配给同文件夹里没 GPS 的照片。<b>本页只做决策，不写任何照片</b>——真正写入发生在终端确认之后。</p>
+    <h3>同位置锚点自动合并</h3>
+    <p>坐标相距 <b>5 米以内</b>的锚点视为"同一处"，自动合并为一组（组名 A/B/C…），组代表取组内<b>最早拍摄</b>的那张——连拍多张手机照时不会各自成一个组。写入时用代表的坐标，组内坐标相差 ≤ 5 m，属 GPS 噪声级，不影响结果。</p>
+    <h3>1 · 时间轴总览</h3>
+    <p>密度条按真实时间比例绘制，柱越高 = 拍得越密集；<b>点柱跳到下方对应照片</b>。胶片条等距排列、横向滚动，任何密度下都不重叠；点缩略图弹出与该位置代表的并排对照大图。<b>颜色只表示归属的位置</b>；📍 = 原生 GPS、📋 = 复制坐标、→ = 待补；实框 = 有坐标（提供方），虚线框 = 待补（接受方）。</p>
+    <h3>默认归属规则</h3>
+    <p>每张待补照片默认归到<b>拍摄时间最近的处</b>；并列时（两处代表落在同一秒，极罕见）取较后拍摄的那张——并列双方必然同地，这样选只为让时间轴色块连续，写入结果不受影响。</p>
+    <h3>2 · 调整分组的三个手段</h3>
+    <p><b>全部改投 A/B</b>：把当前所有待补照片一次划给该位置。适合你判断整组就是一个地点（各处相距见顶部统计），或当作推倒重来的起点。</p>
+    <p><b>分界线</b>：按拍摄顺序一刀切，前 N 张归 A、其余归 B。适合"拍到一半走到了别处"这种时间切换；在恰好两处位置时出现。</p>
+    <p><b>逐张徽章</b>（→ A · 时间差）：点它循环改这一张的归属。适合个别照片不属于它所在的时间段（中途折返等）。</p>
+    <p><b>对照弹窗里的归属条</b>：点任意照片打开对照大图后，顶部有一排位置按钮（<b>A</b> <b>B</b> <b>C</b> …），点哪个就直接归给它，当前所属高亮；也可以直接按键盘字母键 <span class="kbd">A</span>–<span class="kbd">E</span> 改投，不用点按钮、不用循环。</p>
+    <p class="tip">决策提示：各处间距只是参考——跨多远仍算"同一处"，由你看对照图自己判断（自动合并的 5 m 只是免去连拍拆组的噪音）。</p>
+    <h3>3 · 时间差大（⚠）</h3>
+    <p>与所属位置代表拍摄时间差超过 60 秒的照片，徽章带 ⚠ 标记并显示真实差值。勾选「只看时间差大的」可筛出真正需要看图确认的少数几张，其余大概率是准的。</p>
+    <h3>4 · 写入</h3>
+    <p>点「复制写入命令」→ 回终端<b>直接粘贴、回车</b> → 打印分组摘要后按一次 <span class="kbd">y</span> 写入全部。命令自带单行 JSON，剪贴板只复制这一次——复制后不要再复制其他内容。页面开着太久没关系：写入前终端会重新比对锚点坐标，对不上会拒绝。</p>
+    <h3>快捷键（对照弹窗内）</h3>
+    <p><span class="kbd">←</span> 上一张　<span class="kbd">→</span> 下一张　<span class="kbd">A</span>–<span class="kbd">E</span> 改投给对应锚点　<span class="kbd">Esc</span> 关闭弹窗 / 本说明</p>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="bar">
+    <button id="prev" title="对照弹窗内连续翻看（快捷键 ←）">‹ 上一张</button>
+    <span id="counter"></span>
+    <button id="next" title="对照弹窗内连续翻看（快捷键 →）">下一张 ›</button>
+    <span style="flex:1"></span>
+    <button id="close" title="关闭对照弹窗（Esc）">关闭 (Esc)</button>
+  </div>
+  <div class="assignbar" id="assignBar" hidden>
+    <span>归属：</span>
+    <span id="assignBtns"></span>
+    <span class="ahint">点按钮直接改投；或按字母键 A–E（当前所属高亮）</span>
+  </div>
+  <div class="pair">
+    <div class="frame">
+      <img id="ovTarget" alt="">
+      <div class="meta" id="ovTargetMeta"></div>
+    </div>
+    <div class="frame" id="ovRefFrame">
+      <img id="ovRef" alt="">
+      <div class="meta" id="ovRefMeta"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var DATA = /*__DATA__*/ null;
+
+// 分组色板：锚点索引 → 颜色（胶片条边框、密度条柱、徽章、示意点共用）
+var GCOLORS = ['#378ADD', '#EF9F27', '#9C7BE0', '#2FB1A8'];
+function gColor(i) { return GCOLORS[i % GCOLORS.length]; }
+
+var anchors = DATA.anchors.slice();
+var all = DATA.photos.slice();
+var cameras = all.filter(function (p) { return p.kind === 'camera'; });
+var assign = {};
+var onlyDoubt = false;
+var ovIndex = 0;
+var currentPlan = null;
+var barByFile = {}; // 文件名 → 密度条柱元素（悬停卡片时高亮对应柱）
+
+function byTime(a, b) { return a.ts < b.ts ? -1 : (a.ts > b.ts ? 1 : 0); }
+function anchorOf(file) {
+  var f = assign[file];
+  for (var i = 0; i < anchors.length; i++) { if (anchors[i].file === f) return anchors[i]; }
+  return null;
+}
+/* 同位置锚点已在数据层合并成组：anchors 每项 = 一个"处"，members 列出组内全部
+   锚点文件名。组内非代表的锚点照片要靠这张表才能读到自己的组（以及组色） */
+function groupOf(file) {
+  for (var i = 0; i < anchors.length; i++) {
+    if (anchors[i].members && anchors[i].members.indexOf(file) >= 0) return anchors[i];
+  }
+  return null;
+}
+function anchorIndex(a) {
+  var g = groupOf(a.file);
+  return g ? anchors.indexOf(g) : 0;
+}
+function label(a) { return String.fromCharCode(65 + anchorIndex(a)); }
+function diffSec(p, a) { return Math.round(Math.abs(Date.parse(p.time) - Date.parse(a.time)) / 1000); }
+function doubt(p) {
+  var a = anchorOf(p.file);
+  if (!a || !p.time || !a.time) return false;
+  return diffSec(p, a) > 60;
+}
+/* 默认归属：可信精度（秒级）内取时间最近的锚点；并列时取较后拍摄的（延续性
+   偏向）——并列双方必然同地（1 秒内移动不了多远），选谁写入都正确，取后者
+   只是让簇后照片的时间轴色块连续（anchor 顺序不保证按时间，先按 ts 排序再遍历） */
+var anchorsByTime = anchors.slice().sort(byTime);
+function nearest(p) {
+  var best = anchorsByTime[0], bd = Infinity;
+  for (var i = 0; i < anchorsByTime.length; i++) {
+    if (!p.time || !anchorsByTime[i].time) continue;
+    var d = Math.abs(Date.parse(p.time) - Date.parse(anchorsByTime[i].time));
+    if (d <= bd) { bd = d; best = anchorsByTime[i]; }
+  }
+  return best;
+}
+function resetByTime() {
+  cameras.forEach(function (p) { assign[p.file] = nearest(p).file; });
+  render();
+}
+function counts() {
+  return anchors.map(function (a) {
+    return cameras.filter(function (p) { return assign[p.file] === a.file; }).length;
+  });
+}
+function doubts() { return cameras.filter(doubt); }
+
+function fmt(t) { return t ? t.slice(11, 19) : '时间未知'; }
+function hms(sec) {
+  if (sec === null || sec === undefined) return '未知';
+  return sec >= 60 ? Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒' : sec + ' 秒';
+}
+
+function el(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+/* ---- 时间轴总览（D：密度条 + 胶片条） ---- */
+/* 柱色 = 归属组色；锚点柱用其所在组色（不另设状态色，避免颜色语义打架） */
+function barColor(p) {
+  var a = p.kind === 'anchor' ? p : anchorOf(p.file);
+  return gColor(anchorIndex(a));
+}
+function renderDensity() {
+  var svg = document.getElementById('density');
+  svg.textContent = '';
+  var W = 1000, H = 64, padL = 14, padR = 14, topPad = 12, botPad = 6;
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  var withTime = all.filter(function (p) { return p.time; });
+  if (withTime.length < 2) return;
+  var t0 = Date.parse(withTime[0].time);
+  var t1 = Date.parse(withTime[withTime.length - 1].time);
+  var span = Math.max(t1 - t0, 1);
+  function xOf(p) { return padL + (Date.parse(p.time) - t0) / span * (W - padL - padR); }
+  // 密度：与最近邻的时间差越小，柱越高（中位差 = 基准高）
+  var gaps = [];
+  for (var i = 0; i < withTime.length; i++) {
+    var t = Date.parse(withTime[i].time);
+    var d1 = i > 0 ? t - Date.parse(withTime[i - 1].time) : Infinity;
+    var d2 = i < withTime.length - 1 ? Date.parse(withTime[i + 1].time) - t : Infinity;
+    gaps.push(Math.min(d1, d2));
+  }
+  var sorted = gaps.slice().sort(function (a, b) { return a - b; });
+  var med = sorted[Math.floor(sorted.length / 2)] || 60000;
+  var barW = 5;
+  barByFile = {};
+  withTime.forEach(function (p) {
+    var gi = withTime.indexOf(p);
+    var h = Math.max(8, Math.min(H - topPad - botPad, (H - topPad - botPad) * Math.min(1, med / Math.max(gaps[gi], 1))));
+    var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('x', (xOf(p) - barW / 2).toFixed(1));
+    r.setAttribute('y', (H - botPad - h).toFixed(1));
+    r.setAttribute('width', barW);
+    r.setAttribute('height', h.toFixed(1));
+    r.setAttribute('rx', '1.5');
+    r.setAttribute('fill', barColor(p));
+    r.setAttribute('fill-opacity', p.kind === 'anchor' ? '1' : '0.82');
+    r.style.cursor = 'pointer';
+    r.addEventListener('click', function () { flashCard(p.file); });
+    svg.appendChild(r);
+    barByFile[p.file] = r;
+    if (p.kind === 'anchor') {
+      var t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t2.setAttribute('x', xOf(p).toFixed(1));
+      t2.setAttribute('y', (H - botPad - h - 3).toFixed(1));
+      t2.setAttribute('text-anchor', 'middle');
+      t2.setAttribute('font-size', '9');
+      t2.textContent = '📍';
+      svg.appendChild(t2);
+    }
+  });
+  // 时间刻度
+  [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+    var t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t3.setAttribute('x', padL + f * (W - padL - padR));
+    t3.setAttribute('y', H - 0.5);
+    t3.setAttribute('font-size', '8');
+    t3.setAttribute('fill', '#777');
+    t3.setAttribute('text-anchor', f === 0 ? 'start' : (f === 1 ? 'end' : 'middle'));
+    var d = new Date(t0 + f * span);
+    t3.textContent = pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    svg.appendChild(t3);
+  });
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+function thumbNode(p) {
+  if (p.thumb) {
+    var img = el('img');
+    img.src = p.thumb;
+    img.alt = p.file;
+    img.loading = 'lazy';
+    return img;
+  }
+  return el('div', 'noimg', p.file + '（无缩略图 / HEIC）');
+}
+function renderStrip() {
+  var host = document.getElementById('tstrip');
+  host.textContent = '';
+  all.slice().sort(byTime).forEach(function (p) {
+    var isA = p.kind === 'anchor';
+    var gi = isA ? anchorIndex(p) : null;
+    var card = el('div', 'tcard' + (isA ? ' anchor' : ''));
+    if (isA) card.style.borderColor = gColor(gi);
+    card.dataset.file = p.file;
+    card.appendChild(thumbNode(p));
+    if (isA) {
+      var bd = p.geoSource
+        ? el('div', 'tbadge', '📋 复制坐标 · 位置 ' + label(p))
+        : el('div', 'tbadge', '📍 原生 GPS · 位置 ' + label(p));
+      bd.style.color = gColor(gi);
+      card.appendChild(bd);
+    } else {
+      var a = anchorOf(p.file);
+      var tbd = el('div', 'tbadge', '→ ' + label(a) + ' · 差 ' + hms(diffSec(p, a)) + (doubt(p) ? ' ⚠' : ''));
+      tbd.style.color = gColor(anchorIndex(a));
+      tbd.title = '点一下：这张改投给下一个锚点（' + label(a) + ' → 下一个循环）';
+      tbd.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var i = anchorIndex(a);
+        assign[p.file] = anchors[(i + 1) % anchors.length].file;
+        render();
+      });
+      card.appendChild(tbd);
+    }
+    card.appendChild(el('div', 'tf', p.file));
+    card.appendChild(el('div', 'tt', fmt(p.time)));
+    card.title = '点开：与' + (isA ? '其归属' : '所属锚点') + '并排对照大图';
+    card.addEventListener('mouseenter', function () { highlightBar(p.file, true); });
+    card.addEventListener('mouseleave', function () { highlightBar(p.file, false); });
+    card.addEventListener('click', function () { openOverlay(p); });
+    host.appendChild(card);
+  });
+}
+function flashCard(file) {
+  var card = document.querySelector('.tcard[data-file="' + file + '"]');
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  card.classList.add('flash');
+  setTimeout(function () { card.classList.remove('flash'); }, 1200);
+}
+/* 悬停照片卡片 → 密度条上对应柱加白描边（双向互读：柱在哪、照片就在哪个时间片） */
+function highlightBar(file, on) {
+  var r = barByFile[file];
+  if (!r) return;
+  if (on) {
+    r.setAttribute('stroke', '#fff');
+    r.setAttribute('stroke-width', '1.6');
+    r.setAttribute('fill-opacity', '1');
+  } else {
+    r.removeAttribute('stroke');
+    r.removeAttribute('stroke-width');
+    r.setAttribute('fill-opacity', DATA.photos.some(function (p) { return p.file === file && p.kind === 'anchor'; }) ? '1' : '0.82');
+  }
+}
+
+function renderChips() {
+  var c = counts();
+  var host = document.getElementById('chips');
+  host.textContent = '';
+  anchors.forEach(function (a, i) {
+    var d = el('div', 'chip');
+    d.style.borderLeftColor = gColor(i);
+    var img = el('img');
+    img.src = a.thumb || '';
+    img.alt = a.file;
+    d.appendChild(img);
+    var box = el('div');
+    box.appendChild(el('div', 'name', '位置 ' + label(a) + ' · ' + a.file));
+    if (a.members && a.members.length > 1) {
+      box.appendChild(el('div', 'coord', '同处锚点 ' + a.members.length + ' 张：' + a.members.join('、')));
+    }
+    box.appendChild(el('div', 'coord', a.lat.toFixed(6) + ', ' + a.lng.toFixed(6) + ' · ' + fmt(a.time)));
+    var src = a.geoSource ? '（坐标复制自 ' + a.geoSource + '）' : '（原生 GPS）';
+    box.appendChild(el('div', 'coord', src));
+    box.appendChild(el('div', 'count', c[i] + ' 张缺坐标照片将采用此坐标'));
+    d.appendChild(box);
+    var act = el('div', 'act');
+    var b = el('button', null, '全部改投 ' + label(a));
+    b.title = '把当前全部 ' + cameras.length + ' 张待补照片一次划给位置 ' + label(a) +
+      '（整组一个地点时用；也可当推倒重来的起点）';
+    b.addEventListener('click', function () {
+      cameras.forEach(function (p) { assign[p.file] = a.file; });
+      render();
+    });
+    act.appendChild(b);
+    d.appendChild(act);
+    host.appendChild(d);
+  });
+}
+
+function renderSplit() {
+  var host = document.getElementById('split');
+  host.textContent = '';
+  if (anchors.length !== 2) {
+    host.appendChild(el('span', null, '位置共 ' + anchors.length + ' 处；分界线只在恰好两处时提供，更多位置用卡片「全部改投」或逐张徽章调整。'));
+    return;
+  }
+  var sorted = cameras.slice().sort(byTime);
+  var k = 0;
+  while (k < sorted.length && assign[sorted[k].file] === anchors[0].file) k++;
+  var lead = el('span', null, '分界线：前 ');
+  var b1 = el('b', null, String(k));
+  var mid = el('span', null, ' 张 → 位置 A；其余 ');
+  var b2 = el('b', null, String(sorted.length - k));
+  var tail = el('span', null, ' 张 → 位置 B');
+  var input = document.createElement('input');
+  input.type = 'range';
+  input.min = '0';
+  input.max = String(sorted.length);
+  input.step = '1';
+  input.value = String(k);
+  input.title = '按拍摄顺序一刀切：前 N 张归位置 A、其余归位置 B（适合拍到一半走到别处的情形）';
+  input.addEventListener('input', function () {
+    var n = Number(input.value);
+    sorted.forEach(function (p, i) { assign[p.file] = i < n ? anchors[0].file : anchors[1].file; });
+    render();
+  });
+  host.appendChild(lead);
+  host.appendChild(b1);
+  host.appendChild(mid);
+  host.appendChild(b2);
+  host.appendChild(tail);
+  host.appendChild(input);
+  var boundary = el('span', 'time', k === 0 ? '（全部归 B）' : (k === sorted.length ? '（全部归 A）' : '切在 ' + sorted[k].file + ' ' + fmt(sorted[k].time) + ' 之前'));
+  host.appendChild(boundary);
+}
+
+function renderGrid() {
+  var host = document.getElementById('grid');
+  host.textContent = '';
+  var list = all.slice().sort(byTime);
+  var shown = 0;
+  list.forEach(function (p) {
+    if (onlyDoubt && !(p.kind === 'camera' && doubt(p))) return;
+    shown++;
+    var idx = p.kind === 'anchor' ? anchorIndex(p) : -1;
+    var card = el('div', 'card');
+    if (p.kind === 'anchor') card.style.borderColor = gColor(idx);
+    var th = el('div', 'thumb');
+    th.appendChild(thumbNode(p));
+    if (p.kind === 'anchor') {
+      var tg = el('span', 'tag', '位置 ' + String.fromCharCode(65 + idx));
+      tg.style.color = gColor(idx);
+      th.appendChild(tg);
+    } else if (doubt(p)) {
+      th.appendChild(el('span', 'tag', '⚠ 时间差大'));
+    }
+    th.title = '点开：与所属锚点并排对照大图';
+    th.addEventListener('mouseenter', function () { highlightBar(p.file, true); });
+    th.addEventListener('mouseleave', function () { highlightBar(p.file, false); });
+    th.addEventListener('click', function () { openOverlay(p); });
+    card.appendChild(th);
+    card.appendChild(el('div', 'name', p.file));
+    if (p.kind === 'anchor') {
+      var bd0 = el('div', 'badge', (p.geoSource ? '📋 复制坐标（自 ' + p.geoSource + '）' : '📍 原生 GPS'));
+      bd0.style.color = gColor(idx);
+      card.appendChild(bd0);
+    } else {
+      var a = anchorOf(p.file);
+      var bd = el('div', 'badge' + (doubt(p) ? ' doubt' : ''));
+      bd.style.color = gColor(anchorIndex(a));
+      bd.title = '点一下：这张改投给下一个锚点（' + label(a) + ' → 下一个循环）';
+      bd.appendChild(el('span', null, '→ ' + label(a) + ' · 差 ' + hms(diffSec(p, a)) + (doubt(p) ? ' ⚠' : '')));
+      bd.addEventListener('click', function () {
+        var i = anchorIndex(a);
+        assign[p.file] = anchors[(i + 1) % anchors.length].file;
+        render();
+      });
+      card.appendChild(bd);
+    }
+    card.appendChild(el('div', 'time', fmt(p.time)));
+    host.appendChild(card);
+  });
+  if (shown === 0) host.appendChild(el('div', 'empty', '没有时间差大的照片。'));
+}
+
+function renderPlan() {
+  var groups = anchors.map(function (a) {
+    return {
+      ref: a.file,
+      lat: Number(a.lat.toFixed(6)),
+      lng: Number(a.lng.toFixed(6)),
+      targets: cameras.filter(function (p) { return assign[p.file] === a.file; })
+        .sort(byTime).map(function (p) { return p.file; })
+    };
+  }).filter(function (g) { return g.targets.length > 0; });
+
+  var plan = { dir: DATA.dir, groups: groups };
+  currentPlan = plan;
+  document.getElementById('planCmd').innerHTML =
+    'echo \'&lt;分组计划 JSON，已含在复制内容里&gt;\' | npm run fix-gps -- <em>"' + DATA.dir + '"</em> --plan-stdin\n' +
+    '<span style="color:#777"># 复制按钮给出的是这行命令的完整版（JSON 已内嵌其中、压缩为单行）</span>';
+  document.getElementById('planJson').textContent = JSON.stringify(plan, null, 2);
+  return plan;
+}
+
+function renderStats() {
+  var c = counts();
+  var anchorCount = anchors.reduce(function (n, a) { return n + (a.members ? a.members.length : 1); }, 0);
+  document.getElementById('title').textContent = DATA.dir;
+  document.getElementById('subtitle').textContent =
+    all.length + ' 张照片 · ' + anchors.length + ' 处位置（' + anchorCount + ' 张锚点） · ' +
+    cameras.length + ' 张待补坐标 · 生成于 ' + DATA.generatedAt;
+  var host = document.getElementById('stats');
+  host.textContent = '';
+  if (DATA.anchorDistance !== null && anchors.length >= 2) {
+    host.appendChild(el('span', 'pill', '位置最远相距 ' + DATA.anchorDistance + ' m'));
+  }
+  // 每组张数逐组列出（锚点数不定，写死 A/B 会在多锚点时显示误导性数据）
+  var parts = [];
+  anchors.forEach(function (a, i) { parts.push(label(a) + ' ' + c[i] + ' 张'); });
+  host.appendChild(el('span', 'pill', parts.join(' · ')));
+  host.appendChild(el('span', 'pill ro', '页面只读 · 写入在终端确认'));
+}
+
+function render() {
+  renderStats();
+  renderChips();
+  renderSplit();
+  renderGrid();
+  renderPlan();
+  renderDensity();
+  renderStrip();
+  var d = doubts();
+  document.getElementById('doubtPill').textContent = '⚠ 时间差大 ' + d.length + ' 张（> 60 秒）';
+}
+
+function renderMap() {
+  var host = document.getElementById('map');
+  host.textContent = '';
+  var W = 100, H = 62;
+  var pad = 14;
+  var lats = anchors.map(function (a) { return a.lat; });
+  var lngs = anchors.map(function (a) { return a.lng; });
+  var minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
+  var minLng = Math.min.apply(null, lngs), maxLng = Math.max.apply(null, lngs);
+  var spanLat = Math.max(maxLat - minLat, 1e-6), spanLng = Math.max(maxLng - minLng, 1e-6);
+  var span = Math.max(spanLat, spanLng);
+  function px(a) {
+    return {
+      x: pad + ((a.lng - minLng) / span) * (W - pad * 2) + (span - spanLng) / span * (W - pad * 2) / 2,
+      y: H - pad - ((a.lat - minLat) / span) * (H - pad * 2) - (span - spanLat) / span * (H - pad * 2) / 2
+    };
+  }
+  var pts = anchors.map(px);
+  var ns = 'http://www.w3.org/2000/svg';
+  var svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('style', 'max-height:300px;display:block');
+  if (pts.length > 1) {
+    var line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', pts[0].x); line.setAttribute('y1', pts[0].y);
+    line.setAttribute('x2', pts[1].x); line.setAttribute('y2', pts[1].y);
+    line.setAttribute('stroke', '#5F5E5A');
+    line.setAttribute('stroke-width', '0.4');
+    line.setAttribute('stroke-dasharray', '1.5 1.5');
+    svg.appendChild(line);
+  }
+  anchors.forEach(function (a, i) {
+    var c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', pts[i].x);
+    c.setAttribute('cy', pts[i].y);
+    c.setAttribute('r', '2.2');
+    c.setAttribute('fill', gColor(i));
+    c.setAttribute('stroke', '#fff');
+    c.setAttribute('stroke-width', '0.3');
+    svg.appendChild(c);
+    var t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', pts[i].x);
+    t.setAttribute('y', pts[i].y - 3.4);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', '3.2');
+    t.setAttribute('fill', gColor(i));
+    t.textContent = '位置 ' + label(a) + '（' + counts()[i] + ' 张）';
+    svg.appendChild(t);
+  });
+  if (pts.length > 1 && DATA.anchorDistance !== null) {
+    var mid = document.createElementNS(ns, 'text');
+    mid.setAttribute('x', (pts[0].x + pts[1].x) / 2);
+    mid.setAttribute('y', (pts[0].y + pts[1].y) / 2 - 2);
+    mid.setAttribute('text-anchor', 'middle');
+    mid.setAttribute('font-size', '3.2');
+    mid.setAttribute('fill', '#B4B2A9');
+    mid.textContent = DATA.anchorDistance + ' m';
+    svg.appendChild(mid);
+  }
+  host.appendChild(svg);
+}
+
+function openOverlay(p) {
+  ovIndex = 0;
+  var pool = p.kind === 'camera'
+    ? cameras.filter(function (x) { return onlyDoubt ? doubt(x) : true; }).sort(byTime)
+    : all.slice().sort(byTime);
+  var found = -1;
+  for (var i = 0; i < pool.length; i++) { if (pool[i].file === p.file) found = i; }
+  ovIndex = found < 0 ? 0 : found;
+  drawOverlay(pool);
+}
+function drawOverlay(pool) {
+  var p = pool[ovIndex];
+  var a = p.kind === 'anchor' ? p : anchorOf(p.file);
+  var grp = groupOf(p.file) || a; // 该照片所属的"处"（锚点照片自身也在某个组里）
+  var ov = document.getElementById('overlay');
+  ov.hidden = false;
+  document.getElementById('counter').textContent = (ovIndex + 1) + ' / ' + pool.length + '　' + p.file;
+  document.getElementById('ovTarget').src = p.thumb || '';
+  document.getElementById('ovTargetMeta').innerHTML =
+    '<strong>' + (p.kind === 'anchor' ? '锚点照片（提供坐标）' : '待补坐标（将采用位置 ' + label(a) + ' 的坐标）') + '</strong><br>' +
+    p.file + '　拍摄 ' + fmt(p.time) + '<br>' +
+    (p.kind === 'anchor' ? 'GPS ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) : '本机无 GPS · 时间差 ' + hms(diffSec(p, a)));
+  var rf = document.getElementById('ovRefFrame');
+  rf.style.borderColor = gColor(anchorIndex(a));
+  document.getElementById('ovRef').src = a.thumb || '';
+  document.getElementById('ovRefMeta').innerHTML =
+    '<strong>位置 ' + label(a) + ' · ' + a.file + '</strong><br>GPS ' + a.lat.toFixed(6) + ', ' + a.lng.toFixed(6) +
+    (a.geoSource ? '（复制自 ' + a.geoSource + '）' : '') + '　拍摄 ' + fmt(a.time) +
+    (grp.members && grp.members.length > 1 ? '<br>同处锚点 ' + grp.members.length + ' 张，坐标相同（代表 ' + grp.file + '）' : '');
+  renderAssign(p);
+  ov.pool = pool;
+}
+/* 归属选择条：列出全部锚点按钮，点一下直达目标（替代"循环到下一个"）。
+   当前所属高亮为组色实底；锚点照片自己不需要归属，整条隐藏。 */
+function renderAssign(p) {
+  var bar = document.getElementById('assignBar');
+  var host = document.getElementById('assignBtns');
+  host.textContent = '';
+  if (p.kind === 'anchor') { bar.hidden = true; return; }
+  bar.hidden = false;
+  var cur = assign[p.file];
+  anchors.forEach(function (a) {
+    var i = anchorIndex(a);
+    var b = document.createElement('button');
+    var isCur = a.file === cur;
+    b.className = 'abtn' + (isCur ? ' on' : '');
+    b.textContent = label(a);
+    if (isCur) { b.style.background = gColor(i); b.style.borderColor = gColor(i); }
+    b.title = '归到位置 ' + label(a) + '（' + a.file + '）' + (isCur ? ' —— 当前归属' : '');
+    b.addEventListener('click', function () {
+      assign[p.file] = a.file;
+      render();
+      drawOverlay(document.getElementById('overlay').pool);
+    });
+    host.appendChild(b);
+  });
+}
+document.getElementById('close').addEventListener('click', function () { document.getElementById('overlay').hidden = true; });
+document.getElementById('prev').addEventListener('click', function () {
+  var ov = document.getElementById('overlay');
+  if (!ov.pool) return;
+  ovIndex = (ovIndex - 1 + ov.pool.length) % ov.pool.length;
+  drawOverlay(ov.pool);
+});
+document.getElementById('next').addEventListener('click', function () {
+  var ov = document.getElementById('overlay');
+  if (!ov.pool) return;
+  ovIndex = (ovIndex + 1) % ov.pool.length;
+  drawOverlay(ov.pool);
+});
+document.addEventListener('keydown', function (e) {
+  var help = document.getElementById('help');
+  if (!help.hidden && e.key === 'Escape') { help.hidden = true; return; }
+  var ov = document.getElementById('overlay');
+  if (ov.hidden) return;
+  if (e.key === 'Escape') ov.hidden = true;
+  if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+  if (e.key === 'ArrowRight') document.getElementById('next').click();
+  // 字母键 A–E 直选归属（与锚点标签同源，无学习成本；看图时手不离键盘）
+  if (e.key && e.key.length === 1) {
+    var idx = e.key.toUpperCase().charCodeAt(0) - 65;
+    if (idx >= 0 && idx < anchors.length) {
+      var cur = ov.pool && ov.pool[ovIndex];
+      if (cur && cur.kind !== 'anchor') {
+        assign[cur.file] = anchors[idx].file;
+        render();
+        drawOverlay(ov.pool);
+      }
+      e.preventDefault();
+    }
+  }
+});
+/* ---- 帮助面板 ---- */
+var helpEl = document.getElementById('help');
+document.getElementById('helpBtn').addEventListener('click', function () { helpEl.hidden = false; });
+document.getElementById('helpClose').addEventListener('click', function () { helpEl.hidden = true; });
+helpEl.addEventListener('click', function (e) { if (e.target === helpEl) helpEl.hidden = true; });
+document.getElementById('onlyDoubt').addEventListener('change', function (e) {
+  onlyDoubt = e.target.checked;
+  renderGrid();
+});
+document.getElementById('copyBtn').addEventListener('click', function () {
+  /* 剪贴板单槽竞态的根治：JSON 与命令合并成同一次复制。JSON 必须压缩为
+     单行（带换行会在终端粘贴时被当成回车提前执行），单引号按 shell 规则
+     转义为 '\'' 。fix-gps 侧无需任何改动（--plan-stdin 照常读管道）。 */
+  if (!currentPlan) return;
+  var json = JSON.stringify(currentPlan).replace(/'/g, "'\\''");
+  var cmd = "echo '" + json + "' | npm run fix-gps -- \"" + DATA.dir + "\" --plan-stdin";
+  navigator.clipboard.writeText(cmd).then(function () {
+    document.getElementById('copyBtn').textContent = '已复制，去终端粘贴回车，按 y 写入';
+  }, function () {
+    document.getElementById('copyBtn').textContent = '复制失败，请手动选择 JSON 文本复制';
+  });
+});
+
+resetByTime();
+renderMap();
+</script>
+</body>
+</html>
