@@ -148,3 +148,45 @@
   `color` 完全无效，`📷` 的深灰机身叠在角标半透明黑底 + 深色照片上明度差≈0，
   实测等于隐形；且 emoji 字形跨平台差异大。SVG 用 `stroke="currentColor"` 继承
   角标白色，任何底图与平台都清晰
+
+## 视频元数据（2026-10-04 新增，mp4）
+
+mp4 没有 EXIF 容器，**exifr 读不了 mp4**——所有视频元数据读取（预检、fix-gps 扫描、
+审阅页）按扩展名分叉到 `exiftool -j -n`（实测 JSON 键名：`GPSLatitude` /
+`GPSLongitude` 十进制数、`Make` / `Model`、`Duration` 秒）。管线机制见
+`data-pipeline.md` 视频小节，这里记字段口径的坑：
+
+### 拍摄时间：取 `Keys:CreationDate`，不是 `QuickTime:CreateDate`
+
+- `[Keys] CreationDate = 2026:10:03 11:18:54+08:00`——**真拍摄时间**，带时区后缀，
+  显式切掉后缀（`stripTimezoneSuffix`）后走照片同款 `normalizeExifDateTime`
+- `[QuickTime] CreateDate = 2026:10:04 07:42:53`——**导出时间**（从相册导出的时刻），
+  与拍摄时间可差一整天，用错字段 `takenAt` 直接错位
+
+### 溯源标记落在 `[XMP-exif]` 组
+
+mp4 没有 EXIF GPS IFD，fix-gps 写入的 `GPSProcessingMethod` 会落到 **`[XMP-exif]`**
+组——这是正常现象，不要试图改写成 EXIF 组（写不进去）。exiftool `-j` 读回的是
+纯字符串，`parseGeoSource` 原样可解析，`geoSource` 契约对视频不变。
+
+### 写入路径（实测）
+
+| 写法 | 结果 |
+| --- | --- |
+| `-Keys:GPSCoordinates="…"` | ❌ 写不进（PrintConvInv，只读的转换标签） |
+| `-UserData:GPSCoordinates="+lat+lng/"` | ✅ 可写 |
+| 合成标签 `-GPSLatitude=… -GPSLatitudeRef=N …`（fix-gps 现用） | ✅ 可写 |
+| `-tagsfromfile <参照> -GPSLatitude …`（fix-gps 现有命令） | ✅ **对 mp4 原样可用**，零改动 |
+
+fix-gps 补视频坐标**写在原片上**（原片是真相源），`npm run photos` 转码时经
+`-tagsfromfile` 自动带进 `_web.mp4`。剥坐标（造缺坐标测试样本）用
+`exiftool -overwrite_original -gps:all= -Keys:GPSCoordinates= -XMP:all=`。
+
+### 原生 GPS 的存储位置与读回优先级（实测 2026-10-04）
+
+iPhone 视频的坐标存在 `[Keys] GPSCoordinates`（mdta userdata），exiftool 把它合成为
+`GPSLatitude` 读出。**读回优先级：原生 `Keys:GPSCoordinates` > 后写入的 XMP-exif
+GPSLatitude**——对已有原生 GPS 的视频再用 fix-gps 写法写不同坐标，读回仍是原生值
+（实测写入 31.0/121.0 后读回仍 32.0181/118.808）。这不构成真实路径问题：fix-gps
+只把"缺坐标"的媒体进目标清单、永不覆盖已有坐标（与照片同纪律），因此 XMP 写入
+只发生在无原生坐标的视频上，此时读回即写入值（端到端实测一致）。

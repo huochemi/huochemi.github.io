@@ -895,6 +895,111 @@
     ]
   },
   {
+    "lat": 32.01811111111111,
+    "lng": 118.80802222222222,
+    "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5806_thumb.webp",
+    "displayLink": "/data/photos/南京中和桥道口/IMG_5806_display.webp",
+    "webViewLink": "/data/photos/南京中和桥道口/IMG_5806.HEIC",
+    "fileName": "IMG_5806.HEIC",
+    "dirName": "南京中和桥道口",
+    "description": "南京中和桥道口",
+    "takenAt": "2026-10-03T11:12:33",
+    "photos": [
+      {
+        "fileName": "DSC04908.JPG",
+        "thumbnailLink": "/data/photos/南京中和桥道口/DSC04908_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/DSC04908_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/DSC04908.JPG",
+        "lat": 32.01835,
+        "lng": 118.80784722222222,
+        "takenAt": "2026-10-03T11:33:28",
+        "device": "camera",
+        "geoSource": "IMG_5805.HEIC"
+      },
+      {
+        "fileName": "IMG_5805.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5805_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5805_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5805.HEIC",
+        "lat": 32.01835,
+        "lng": 118.80784722222222,
+        "takenAt": "2026-10-03T11:09:08",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5806.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5806_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5806_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5806.HEIC",
+        "lat": 32.01811111111111,
+        "lng": 118.80802222222222,
+        "takenAt": "2026-10-03T11:12:33",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5807.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5807_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5807_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5807.HEIC",
+        "lat": 32.01812777777778,
+        "lng": 118.80790833333333,
+        "takenAt": "2026-10-03T11:12:37",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5810.mp4",
+        "type": "video",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5810_thumb.webp",
+        "videoLink": "/data/photos/南京中和桥道口/IMG_5810_web.mp4",
+        "duration": 34.3366666666667,
+        "lat": 32.0181,
+        "lng": 118.808,
+        "takenAt": "2026-10-03T11:18:54",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5811.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5811_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5811_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5811.HEIC",
+        "lat": 32.01833055555556,
+        "lng": 118.80780833333333,
+        "takenAt": "2026-10-03T11:33:50",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5812.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5812_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5812_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5812.HEIC",
+        "lat": 32.018325,
+        "lng": 118.80780833333333,
+        "takenAt": "2026-10-03T11:33:51",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5813.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5813_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5813_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5813.HEIC",
+        "lat": 32.01833055555556,
+        "lng": 118.80780833333333,
+        "takenAt": "2026-10-03T11:33:55",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5814.HEIC",
+        "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5814_thumb.webp",
+        "displayLink": "/data/photos/南京中和桥道口/IMG_5814_display.webp",
+        "webViewLink": "/data/photos/南京中和桥道口/IMG_5814.HEIC",
+        "lat": 32.01833055555556,
+        "lng": 118.80780833333333,
+        "takenAt": "2026-10-03T11:33:56",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 31.971152777777775,
     "lng": 118.78961111111111,
     "thumbnailLink": "/data/photos/南京南站东南角/DSC04920_thumb.webp",

@@ -1,10 +1,13 @@
 /**
  * fix-gps.js — 交互式补 GPS 坐标工具
  *
- * 为缺失 EXIF GPS 的照片从同地点参照照片复制坐标，写入原图。除坐标外还会写一个
+ * 为缺失 EXIF GPS 的照片/视频从同地点参照复制坐标，写入原文件。除坐标外还会写一个
  * 溯源标记（GPSProcessingMethod：`hcm-geosource ref=<参照> date=<日期>`），让管线
  * 能在 output.json 里区分"原生坐标"与"复制坐标"；同时刻意不复制参照的
  * GPSHPositioningError（避免相机照声称拥有手机的定位精度）。
+ * 视频支持（2026-10-04）：mp4 与照片同清单、同写入命令（tagsfromfile 对 mp4
+ * 原样可用）；元数据读取分叉 exiftool（exifr 读不了 mp4），详见
+ * docs/plans/2026-10-04-video-mp4-support.md 与 docs/photo-metadata.md 视频小节。
  * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md
  *
  * 用法：
@@ -40,7 +43,15 @@ const exifr = require('exifr');
 const execFileAsync = promisify(execFile);
 
 const IMGS_DIR = path.join(__dirname, '../data/photos');
-const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
+// 可处理媒体：图片 + 视频（mp4）。视频与照片同口径——缺坐标的视频同样进
+// 待修复清单，fix-gps 的 tagsfromfile 写入命令对 mp4 原样可用（实测）
+const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
+// 派生文件名后缀（与 process-photos.js 的口径同值副本，改需同步；
+// 跨文件测试锁定一致——坐标只写原片，派生文件永不进扫描）
+const DERIVED_SUFFIXES = ['_thumb.webp', '_display.webp', '_web.mp4'];
+const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
+// 视频判定：exifr 读不了 mp4，坐标/时间的读取通道按它分叉到 exiftool
+const isVideoFile = (file) => path.extname(file).toLowerCase() === '.mp4';
 const PREVIEW_FILE = path.join(os.tmpdir(), 'fix-gps-preview.html');
 // 写入后验证：目标坐标与参照坐标允许的最大偏差（度）
 const COORD_EPSILON = 0.001;
@@ -92,8 +103,62 @@ function normalizeExifDateTime(raw) {
   return `${y}-${m}-${d}T${h}:${min}:${s}`;
 }
 
-/** 读取照片拍摄时间（返回 null 表示缺失/解析失败） */
+/**
+ * 切掉 exiftool 时间值尾部的时区后缀（如 "+08:00"）。
+ * 与 process-photos.js 的 stripTimezoneSuffix 同口径（该文件未模块化，此处复制）：
+ * mp4 的拍摄时间在 Keys:CreationDate、带时区后缀，显式切除后走同一规范化。
+ */
+function stripTimezoneSuffix(raw) {
+  return typeof raw === 'string' ? raw.replace(/[+-]\d{2}:\d{2}$/, '') : raw;
+}
+
+/**
+ * 读取视频的坐标 / 拍摄时间 / 溯源标记（exifr 读不了 mp4，走 exiftool）。
+ * 字段口径与 process-photos.js 的 readVideoMeta 一致（两个脚本各自独立，此处复制）；
+ * 拍摄时间取 Keys:CreationDate（QuickTime:CreateDate 是导出时间，不是拍摄时间）。
+ * @returns {Promise<{lat?, lng?, takenAt?, geoSource?}>} 读取失败返回空对象
+ */
+async function readVideoMeta(filePath) {
+  try {
+    const { stdout } = await execFileAsync('exiftool', [
+      '-j',
+      '-n',
+      '-Keys:CreationDate',
+      '-GPSLatitude',
+      '-GPSLongitude',
+      '-GPSProcessingMethod',
+      filePath,
+    ]);
+    const tags = JSON.parse(stdout)[0] || {};
+    return {
+      lat: typeof tags.GPSLatitude === 'number' ? tags.GPSLatitude : undefined,
+      lng:
+        typeof tags.GPSLongitude === 'number' ? tags.GPSLongitude : undefined,
+      takenAt: normalizeExifDateTime(stripTimezoneSuffix(tags.CreationDate)),
+      geoSource: tags.GPSProcessingMethod,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** ffmpeg 可用性预检（懒执行，只检一次）：视频抽帧预览才需要（S3：缺失即报错） */
+let ffmpegAvailable = false;
+async function ensureFfmpeg() {
+  if (ffmpegAvailable) return;
+  try {
+    await execFileAsync('ffmpeg', ['-version']);
+  } catch {
+    throw new Error('未找到 ffmpeg，请先安装：brew install ffmpeg');
+  }
+  ffmpegAvailable = true;
+}
+
+/** 读取照片/视频拍摄时间（返回 null 表示缺失/解析失败） */
 async function readTakenAt(filePath) {
+  if (isVideoFile(filePath)) {
+    return (await readVideoMeta(filePath)).takenAt ?? null;
+  }
   try {
     const exif = await exifr.parse(filePath, {
       pick: ['DateTimeOriginal'],
@@ -107,6 +172,12 @@ async function readTakenAt(filePath) {
 
 /** 读取 GPS；返回 { lat, lng } 或 null */
 async function readGps(filePath) {
+  if (isVideoFile(filePath)) {
+    const meta = await readVideoMeta(filePath);
+    return meta.lat !== undefined && meta.lng !== undefined
+      ? { lat: meta.lat, lng: meta.lng }
+      : null;
+  }
   try {
     const gps = await exifr.gps(filePath);
     if (gps && gps.latitude !== undefined && gps.longitude !== undefined) {
@@ -134,8 +205,7 @@ async function scan() {
     const files = (await fs.readdir(dirPath)).filter(
       (file) =>
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-        !file.includes('_thumb') &&
-        !file.includes('_display'),
+        !isDerivedFile(file),
     );
 
     for (const file of files) {
@@ -176,8 +246,34 @@ class Preview {
     this.browserOpened = false;
   }
 
-  /** 生成可用于 <img src> 的 file:// URL（HEIC 先转临时 JPEG） */
+  /** 生成可用于 <img src> 的 file:// URL（HEIC 先转临时 JPEG；mp4 抽一帧临时 JPEG） */
   async toImgSrc(filePath) {
+    if (isVideoFile(filePath)) {
+      // mp4 不能进 <img>：抽第 2 秒一帧作为预览图（封面帧足够判断"是否同一地点"）
+      await ensureFfmpeg();
+      const parsed = path.parse(filePath);
+      const tmpJpeg = path.join(
+        os.tmpdir(),
+        `fix-gps-preview_${parsed.name}_${process.pid}.jpg`,
+      );
+      await execFileAsync('ffmpeg', [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-ss',
+        '2',
+        '-i',
+        filePath,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '3',
+        tmpJpeg,
+      ]);
+      this.tmpJpegs.add(tmpJpeg);
+      return pathToFileURL(tmpJpeg).href;
+    }
     if (path.extname(filePath).toLowerCase() !== '.heic') {
       return pathToFileURL(filePath).href;
     }
@@ -465,9 +561,10 @@ function mergeAnchors(anchors) {
 
 /**
  * 解析审阅页 <img> 用的缩略图 URL：优先既有派生图 _thumb.webp（npm run photos
- * 的产物）；没有则非 HEIC 直接用原图；HEIC 浏览器渲染不了且无派生图 → sips
- * 转临时 JPEG（与交互预览 Preview 同款做法；转出的文件留在 REVIEW_OUT_DIR
- * 供页面持续引用，不随脚本退出清理）。
+ * 的产物）；没有则非 HEIC / 非 mp4 直接用原图；HEIC 浏览器渲染不了且无派生图 →
+ * sips 转临时 JPEG；mp4 不能进 <img> → ffmpeg 抽第 2 秒一帧出临时 JPEG（与
+ * 交互预览 Preview 同款做法；转出的文件留在 REVIEW_OUT_DIR 供页面持续引用，
+ * 不随脚本退出清理）。
  */
 async function resolveThumbSrc(dirPath, fileName) {
   const stem = path.parse(fileName).name;
@@ -479,6 +576,26 @@ async function resolveThumbSrc(dirPath, fileName) {
     // 无派生缩略图
   }
   const src = path.join(dirPath, fileName);
+  if (isVideoFile(fileName)) {
+    await ensureFfmpeg();
+    const tmpJpeg = path.join(REVIEW_OUT_DIR, `${stem}_review.jpg`);
+    await execFileAsync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-ss',
+      '2',
+      '-i',
+      src,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '3',
+      tmpJpeg,
+    ]);
+    return pathToFileURL(tmpJpeg).href;
+  }
   if (path.extname(fileName).toLowerCase() !== '.heic') {
     return pathToFileURL(src).href;
   }
@@ -487,23 +604,37 @@ async function resolveThumbSrc(dirPath, fileName) {
   return pathToFileURL(tmpJpeg).href;
 }
 
-/** 扫描单个文件夹，返回审阅页需要的照片元数据（只读） */
+/** 扫描单个文件夹，返回审阅页需要的媒体元数据（只读）。照片走 exifr，视频走 exiftool */
 async function scanDirForReview(dirName) {
   const dirPath = path.join(IMGS_DIR, dirName);
   const files = (await fs.readdir(dirPath)).filter(
     (file) =>
       ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-      !file.includes('_thumb') &&
-      !file.includes('_display'),
+      !isDerivedFile(file),
   );
 
   const photos = [];
   for (const file of files) {
     const filePath = path.join(dirPath, file);
-    const exif = await exifr.parse(filePath, REVIEW_EXIF_OPTS).catch(() => null);
-    const lat = exif?.latitude;
-    const lng = exif?.longitude;
-    const time = normalizeExifDateTime(exif?.DateTimeOriginal);
+    let lat;
+    let lng;
+    let time;
+    let geoSourceRaw;
+    if (isVideoFile(file)) {
+      const meta = await readVideoMeta(filePath);
+      lat = meta.lat;
+      lng = meta.lng;
+      time = meta.takenAt;
+      geoSourceRaw = meta.geoSource;
+    } else {
+      const exif = await exifr
+        .parse(filePath, REVIEW_EXIF_OPTS)
+        .catch(() => null);
+      lat = exif?.latitude;
+      lng = exif?.longitude;
+      time = normalizeExifDateTime(exif?.DateTimeOriginal);
+      geoSourceRaw = exif?.GPSProcessingMethod;
+    }
     photos.push({
       file,
       time,
@@ -511,7 +642,7 @@ async function scanDirForReview(dirName) {
       kind: lat !== undefined && lng !== undefined ? 'anchor' : 'camera',
       lat: lat ?? null,
       lng: lng ?? null,
-      geoSource: parseGeoSource(exif?.GPSProcessingMethod) ?? null,
+      geoSource: parseGeoSource(geoSourceRaw) ?? null,
       thumb: await resolveThumbSrc(dirPath, file),
     });
   }
@@ -694,7 +825,7 @@ async function runPlan(rawPlan, filterDir, yes) {
       throw new Error(`${tag} 的 targets 为空`);
     }
     if (!ALLOWED_EXTS.has(path.extname(g.ref).toLowerCase())) {
-      throw new Error(`${tag} 的参照 ${g.ref} 不是可处理的图片文件`);
+      throw new Error(`${tag} 的参照 ${g.ref} 不是可处理的媒体文件`);
     }
 
     const refPath = path.join(dirPath, g.ref);
@@ -733,7 +864,7 @@ async function runPlan(rawPlan, filterDir, yes) {
       }
       seenTargets.set(t, g.ref);
       if (!ALLOWED_EXTS.has(path.extname(t).toLowerCase())) {
-        throw new Error(`目标 ${t} 不是可处理的图片文件`);
+        throw new Error(`目标 ${t} 不是可处理的媒体文件`);
       }
       const targetPath = path.join(dirPath, t);
       try {
@@ -1112,7 +1243,7 @@ async function main() {
       } else {
         console.error(
           color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.target}"（或不是可处理的图片文件）。`,
+            `❌ 文件夹 "${filterDir}" 中未找到 "${args.target}"（或不是可处理的媒体文件）。`,
           ),
         );
       }
@@ -1135,7 +1266,7 @@ async function main() {
       } else {
         console.error(
           color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的图片文件）。`,
+            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的媒体文件）。`,
           ),
         );
       }
@@ -1157,7 +1288,7 @@ async function main() {
       } else {
         console.error(
           color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的图片文件）。`,
+            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的媒体文件）。`,
           ),
         );
       }

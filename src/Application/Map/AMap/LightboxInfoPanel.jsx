@@ -89,6 +89,8 @@ function LightboxInfoPanel({
 
   if (!photo) return null;
 
+  const isVideo = photo.type === 'video';
+
   // 删除命令：由 UI 已有字段组装，不含本机路径（公网 bundle 不留本机信息）。
   // 需在站点仓库根目录执行，文案在下方说明。
   const deleteCommand =
@@ -176,15 +178,19 @@ function LightboxInfoPanel({
           封面不可删除（脚本也会按 index_photo 硬拦），故封面态不给复制按钮 */}
       {deleteCommand && (
         <div className={styles.section}>
-          <div className={styles.label}>删除这张照片</div>
+          <div className={styles.label}>
+            {isVideo ? '删除这个视频' : '删除这张照片'}
+          </div>
           {isCover ? (
             <>
-              <div className={styles.coverBadge}>封面照片 · 不可删除</div>
+              <div className={styles.coverBadge}>
+                {isVideo ? '封面视频 · 不可删除' : '封面照片 · 不可删除'}
+              </div>
               <div className={styles.desc}>
                 封面提供本组在地图上的坐标与缩略图来源，删除会让整组失去定位。
                 如需更换封面，请先修改该文件夹 index.json 的{' '}
                 <code className={styles.code}>index_photo</code>{' '}
-                并指向一张带 GPS 的照片，再删除这张。
+                并指向一张带 GPS 的照片或视频，再删除这张。
               </div>
             </>
           ) : (
@@ -198,7 +204,8 @@ function LightboxInfoPanel({
               </button>
               <code className={styles.cmdPreview}>{deleteCommand}</code>
               <div className={styles.desc}>
-                在站点仓库根目录的终端粘贴执行：删除这张照片与派生图。原图会直接删除、
+                在站点仓库根目录的终端粘贴执行：删除这个文件与它的派生图
+                {isVideo ? '（含转码视频）' : ''}。原文件会直接删除、
                 不进回收站，请确认后再执行；删除后需自行执行一次{' '}
                 <code className={styles.code}>npm run photos</code>{' '}
                 更新 output.json。

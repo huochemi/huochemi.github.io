@@ -166,6 +166,29 @@
   vertical-align: -1px;
 }
 
+/* 视频卡片中央的播放三角：半透明圆底 + 白三角（视频身份的另一标识，
+   与左下角时长时间角标互补）；pointer-events none 保证点击落在卡片上 */
+.videoPlayBadge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.videoPlayBadge svg {
+  margin-left: 2px; /* 三角形视觉重心补偿，看起来真正居中 */
+}
+
 /* 动画定义 */
 @keyframes fadeIn {
   from {

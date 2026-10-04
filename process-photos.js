@@ -12,8 +12,13 @@ const execFileAsync = promisify(execFile);
 const IMGS_DIR = path.join(__dirname, '../data/photos'); // 指向 ../data/photos
 const OUTPUT_FILE = path.join(__dirname, 'src', 'Application', 'output.json');
 
-// 支持的图片扩展名
-const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
+// 支持的媒体扩展名：图片 + 视频（mp4）。视频与照片同口径参与 GPS 硬拦
+// （组内任一张缺坐标即整组跳过）、坐标同样写在原片（真相源）
+// 见 docs/plans/2026-10-04-video-mp4-support.md
+const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
+// 视频判定：按扩展名。读取通道（exifr / exiftool）与生成流程按它分叉
+const VIDEO_EXTS = new Set(['.mp4']);
+const isVideoFile = (file) => VIDEO_EXTS.has(path.extname(file).toLowerCase());
 // 站内相对路径：生产环境站点与 data 项目站同域（huochemi.github.io），
 // 相对路径解析结果与原绝对 URL 一致；本地开发由 src/setupProxy.js 将
 // /data 挂载到本地 data 仓库，无需先提交 data repo 即可预览
@@ -33,9 +38,23 @@ const color = {
 // 缩略图配置：300x300 px（适配 2x/3x 高分屏）
 const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
-// 派生图文件名后缀（delete-photo.js 有一套自己的副本，改这里需同步）
+// 派生图文件名后缀（delete-photo.js / fix-gps.js 各有一套同值副本，改这里需同步）
 const THUMB_SUFFIX = '_thumb.webp';
 const DISPLAY_SUFFIX = '_display.webp';
+// 视频转码版文件名后缀（浏览器实际播放的文件；原片不入 data 仓库 git）
+const WEB_VIDEO_SUFFIX = '_web.mp4';
+// 任何媒体扫描都必须排除的派生文件后缀——不排除的话，重跑管线会把
+// 派生文件当原图再处理一遍。三个 CLI 各存一份同值副本（刻意不抽共享模块），
+// 有跨文件测试锁定一致（test/video-support.test.js）
+const DERIVED_SUFFIXES = [THUMB_SUFFIX, DISPLAY_SUFFIX, WEB_VIDEO_SUFFIX];
+const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
+
+// 视频转码档位（2026-10-04 用户拍板）：libx264 CRF30、高度压到 ≤720p、
+// 保留源帧率、AAC 128k。实测 65.5 MB 原片（1080p60）→ 8.6 MB，
+// 档位取舍依据见 docs/plans/2026-10-04-video-mp4-support.md 决策 1
+const VIDEO_CRF = '30';
+const VIDEO_MAX_HEIGHT = 720;
+const VIDEO_AUDIO_BITRATE = '128k';
 
 // 展示图配置：1920px 宽（网页 Lightbox 全屏展示足够），
 // 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化
@@ -224,9 +243,124 @@ async function generateDisplayImage(inputPath, outputPath) {
 }
 
 /**
+ * 判断派生文件是否已比源头新（视频转码的增量跳过判据）。
+ * 视频转码单次要 6~19 s，重跑管线不应反复重转；但 fix-gps 补坐标会更新原片
+ * mtime——此时必须重转（新坐标要带进转码版），所以判据是
+ * "派生文件存在且 mtime ≥ 原片 mtime 才跳过"。
+ * @param {string} sourcePath 源文件绝对路径
+ * @param {string} derivedPath 派生文件绝对路径
+ * @returns {Promise<boolean>}
+ */
+async function derivedIsUpToDate(sourcePath, derivedPath) {
+  const [sourceStat, derivedStat] = await Promise.all([
+    fs.stat(sourcePath),
+    fs.stat(derivedPath).catch(() => null),
+  ]);
+  return derivedStat !== null && derivedStat.mtimeMs >= sourceStat.mtimeMs;
+}
+
+/**
+ * 生成视频转码版（<名>_web.mp4）：libx264 CRF30 + 高度 ≤720p + faststart。
+ * 原片不入 data 仓库 git（.gitignore 排除），转码版才是浏览器实际播放的文件。
+ *
+ * 分两步：① ffmpeg 转码——实测 ffmpeg 会丢光全部元数据（GPS / CreationDate /
+ * Make / Model 全空，-map_metadata 0 也救不回）；② exiftool -tagsfromfile 从
+ * 原片（真相源）把元数据捞回。因此 fix-gps 补坐标写在原片上，每次转码自动带上，
+ * 改档位重转不会丢坐标——与"原图是真相源、派生图可重建"的既有哲学一致。
+ *
+ * scale 高度表达式 min(720,ih)：分辨率低于 720p 的视频不被放大；
+ * '…' 是 ffmpeg filtergraph 自己的引号语法（保护 min() 里的逗号不被当作
+ * 过滤器分隔符），经 execFile 无 shell 直接传参，实测可用。
+ *
+ * @param {string} sourcePath 原片绝对路径
+ * @param {string} outputPath 转码版输出绝对路径
+ */
+async function generateWebVideo(sourcePath, outputPath) {
+  if (await derivedIsUpToDate(sourcePath, outputPath)) return;
+  await execFileAsync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    sourcePath,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'medium',
+    '-crf',
+    VIDEO_CRF,
+    '-pix_fmt',
+    'yuv420p',
+    '-vf',
+    `scale=-2:'min(${VIDEO_MAX_HEIGHT},ih)'`,
+    '-c:a',
+    'aac',
+    '-b:a',
+    VIDEO_AUDIO_BITRATE,
+    '-movflags',
+    '+faststart',
+    outputPath,
+  ]);
+  await execFileAsync('exiftool', [
+    '-overwrite_original',
+    '-tagsfromfile',
+    sourcePath,
+    '-Keys:GPSCoordinates',
+    '-Keys:CreationDate',
+    '-Make',
+    '-Model',
+    '-XMP:all',
+    outputPath,
+  ]);
+}
+
+/**
+ * 生成视频封面帧缩略图：ffmpeg 抽一帧到临时 PNG → 复用照片缩略图的 sharp 链
+ * （300×300 cover + entropy → webp，与 generateThumbnail 完全同一参数）。
+ * 抽帧时间取 min(5, duration/2) 秒：避开片头可能的黑帧，也不越过后半段。
+ *
+ * @param {string} sourcePath 原片绝对路径
+ * @param {string} outputPath 缩略图输出绝对路径（<名>_thumb.webp）
+ * @param {number|undefined} durationSeconds 视频时长（预检已读出，秒）
+ */
+async function generateVideoThumbnail(sourcePath, outputPath, durationSeconds) {
+  const seekTo = Math.max(0, Math.min(5, (durationSeconds || 0) / 2));
+  // 唯一临时文件名，避免并行处理同名文件时互相覆盖（与 HEIC 的 sips 兜底同款写法）
+  const unique = `${path.parse(sourcePath).name}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const tmpPngPath = path.join(os.tmpdir(), `${unique}.png`);
+  try {
+    await execFileAsync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-ss',
+      String(seekTo),
+      '-i',
+      sourcePath,
+      '-frames:v',
+      '1',
+      tmpPngPath,
+    ]);
+    await sharp(tmpPngPath)
+      .resize(THUMB_SIZE, THUMB_SIZE, {
+        fit: 'cover',
+        position: sharp.strategy.entropy,
+      })
+      .webp({ quality: THUMB_QUALITY })
+      .toFile(outputPath);
+  } finally {
+    if (tmpPngPath) {
+      await fs.unlink(tmpPngPath).catch(() => {});
+    }
+  }
+}
+
+/**
  * 数据一致性检查（只报告：不修改任何文件、不改变退出码、不调用外部命令）
  *
- * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` 找不到同名原图。
+ * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` / `_web.mp4` 找不到同名原媒体。
  * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
  * 报告用 ❗ 前缀而非 ⏭️，与"未通过预检的文件夹"这一层判定区分开
  * （后者会改退出码，孤儿文件只报告、不改退出码）。
@@ -235,7 +369,7 @@ async function generateDisplayImage(inputPath, outputPath) {
  */
 async function reportInconsistencies(dirNames) {
   const orphans = [];
-  const suffixes = [THUMB_SUFFIX, DISPLAY_SUFFIX];
+  const suffixes = DERIVED_SUFFIXES;
 
   for (const dirName of dirNames) {
     const dirPath = path.join(IMGS_DIR, dirName);
@@ -246,12 +380,13 @@ async function reportInconsistencies(dirNames) {
       continue; // 该文件夹已在主流程报错，此处不重复报
     }
 
-    // 原图基名集合（不带扩展名），用于与派生文件配对
+    // 原媒体基名集合（不带扩展名），用于与派生文件配对。
+    // 视频原片（X.mp4）也在基名集合里——它的转码版 X_web.mp4 因此不算孤儿
     const stems = new Set();
     for (const file of files) {
       if (
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-        !file.includes('_thumb')
+        !isDerivedFile(file)
       ) {
         stems.add(path.parse(file).name);
       }
@@ -427,8 +562,7 @@ function describeAnchorSpread(refs) {
   return `落在 ${spots.length} 处、最远相距 ${Math.round(max)} m`;
 }
 
-/** 球面距离（米）。与 fix-gps.js 的同名函数保持一致（两脚本各自独立，未模块化） */
-function haversineMeters(a, b) {
+/** 球面距离（米）。与 fix-gps.js 的同名函数保持一致（两脚本各自独立，未模块化） */function haversineMeters(a, b) {
   const R = 6371000;
   const rad = (x) => (x * Math.PI) / 180;
   const dLat = rad(b.lat - a.lat);
@@ -440,11 +574,71 @@ function haversineMeters(a, b) {
 }
 
 /**
- * 读取单张照片的预检元数据（静默：不打印、不写盘）
- * @param {string} filePath 图片绝对路径
- * @returns {Promise<{lat, lng, takenAt, make, model, geoSource}>}
+ * 切掉 exiftool 时间值尾部的时区后缀（如 "+08:00"）。
+ * mp4 的拍摄时间在 Keys:CreationDate，带时区后缀；而现有口径是
+ * "拍摄地当地墙上时间、无时区"——显式切除后走同一个 normalizeExifDateTime，
+ * 把口径写成代码而非依赖其正则"只前缀匹配"的巧合。
+ * @param {string|undefined} raw exiftool 读到的时间原始值
+ * @returns {string|undefined} 去掉时区后缀的值
+ */
+function stripTimezoneSuffix(raw) {
+  return typeof raw === 'string' ? raw.replace(/[+-]\d{2}:\d{2}$/, '') : raw;
+}
+
+/**
+ * 读取单个视频的预检元数据（静默：不打印、不写盘）。
+ * exifr 读不了 mp4（其解析器面向 EXIF 容器），视频改走 exiftool：一次
+ * `-j -n` 调用取回坐标、拍摄时间、设备、溯源、时长全部字段（实测键名：
+ * CreationDate 含 "+08:00" 后缀 / GPSLatitude、GPSLongitude 为十进制数 /
+ * Make、Model / Duration 为秒）。
+ * ⚠️ 拍摄时间必须取 Keys:CreationDate——QuickTime:CreateDate 是
+ * "导出时间"（iPhone 从相册导出的时刻），不是拍摄时间，两者可差一整天。
+ *
+ * @param {string} filePath 视频绝对路径
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, duration}>}
+ */
+async function readVideoMeta(filePath) {
+  try {
+    const { stdout } = await execFileAsync('exiftool', [
+      '-j',
+      '-n',
+      '-Keys:CreationDate',
+      '-GPSLatitude',
+      '-GPSLongitude',
+      '-GPSProcessingMethod',
+      '-Make',
+      '-Model',
+      '-Duration',
+      filePath,
+    ]);
+    const tags = JSON.parse(stdout)[0] || {};
+    return {
+      lat: typeof tags.GPSLatitude === 'number' ? tags.GPSLatitude : undefined,
+      lng:
+        typeof tags.GPSLongitude === 'number' ? tags.GPSLongitude : undefined,
+      takenAt: normalizeExifDateTime(stripTimezoneSuffix(tags.CreationDate)),
+      make: tags.Make,
+      model: tags.Model,
+      geoSource: parseGeoSource(tags.GPSProcessingMethod),
+      duration:
+        typeof tags.Duration === 'number' ? tags.Duration : undefined,
+    };
+  } catch {
+    // 与照片读取同口径：解析失败视同全部缺失，由缺坐标硬拦统一兜住
+    return {};
+  }
+}
+
+/**
+ * 读取单张照片 / 单个视频的预检元数据（静默：不打印、不写盘）
+ * @param {string} filePath 媒体文件绝对路径
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, duration?}>}
  */
 async function readPhotoMeta(filePath) {
+  // 视频分叉：exifr 读不了 mp4，走 exiftool（duration 仅视频有）
+  if (isVideoFile(filePath)) {
+    return readVideoMeta(filePath);
+  }
   const exif = await exifr.parse(filePath, PREFLIGHT_EXIF_OPTS).catch(() => null);
   return {
     lat: exif?.latitude,
@@ -494,33 +688,35 @@ async function preflightDir(dirName) {
       };
     }
 
-    // 过滤出图片文件（剔除带有 _thumb 的已生成缩略图）
+    // 过滤出媒体文件（图片 + 视频原片；剔除全部派生文件）
     const files = await fs.readdir(dirPath);
-    const imageFiles = files.filter(
+    const mediaFiles = files.filter(
       (file) =>
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-        !file.includes('_thumb'),
+        !isDerivedFile(file),
     );
 
-    if (imageFiles.length === 0) {
+    if (mediaFiles.length === 0) {
       return {
         dirName,
-        reason: '没有符合格式的图片文件',
-        hint: '放入图片后重跑：npm run photos',
+        reason: '没有符合格式的媒体文件（jpg / heic / tiff / mp4）',
+        hint: '放入照片或视频后重跑：npm run photos',
       };
     }
 
-    if (!imageFiles.includes(coverFileName)) {
+    // 视频可以当封面（数据层与照片等价，用户 2026-10-04 拍板）：
+    // index.json 的 index_photo 就是"任意一张带坐标的原媒体文件名"
+    if (!mediaFiles.includes(coverFileName)) {
       return {
         dirName,
-        reason: `index.json 指定的封面图片 "${coverFileName}" 在文件夹中不存在`,
+        reason: `index.json 指定的封面 "${coverFileName}" 在文件夹中不存在`,
         hint: '修正 index.json 的 index_photo 后重跑：npm run photos',
       };
     }
 
-    // 并行读取全部图片的 EXIF（实测 156 张约 220ms，占整轮耗时 2% 量级）
+    // 并行读取全部媒体的元数据（照片走 exifr，视频走 exiftool）
     const images = await Promise.all(
-      imageFiles.map(async (file) => ({
+      mediaFiles.map(async (file) => ({
         file,
         meta: await readPhotoMeta(path.join(dirPath, file)),
       })),
@@ -529,6 +725,7 @@ async function preflightDir(dirName) {
     // 组内任一张缺坐标即判失败（含封面，不再有单独的封面分支）：
     // 相机机身无 GPS 时"相机照缺坐标"是流程的中间态，说明 fix-gps 还没跑，
     // 此时必须零副作用地停下，而不是带着缺坐标的数据继续产出。
+    // 视频与照片同口径参与本判定（视频缺坐标同样整组跳过，用户 2026-10-04 拍板）
     const missing = images.filter(
       (image) => image.meta.lat === undefined || image.meta.lng === undefined,
     );
@@ -536,12 +733,12 @@ async function preflightDir(dirName) {
       // 批量提示按锚点数量分档：0 张无法批量；1 张时参照无歧义，直接给出含参照
       // 文件名的 --all 批量命令；≥2 张时选哪张作参照是分组决策（可能落在多处），
       // 不替用户拍板，改为给出 --review 审阅页命令（页面调整分组后一次写入）。
-      // 排除 _display 与 fix-gps 的扫描口径对齐（_thumb 本就被 imageFiles 过滤）。
+      // 排除全部派生文件（与 fix-gps 的扫描口径对齐）
       const refs = images.filter(
         (image) =>
           image.meta.lat !== undefined &&
           image.meta.lng !== undefined &&
-          !image.file.includes('_display'),
+          !isDerivedFile(image.file),
       );
       let hint = `补坐标后重跑：npm run fix-gps -- "${dirName}"`;
       if (refs.length === 1) {
@@ -584,33 +781,63 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
       const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
       const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
       const filePath = path.join(dirPath, file);
+      const video = isVideoFile(file);
 
-      // 生成 WebP 缩略图
-      try {
-        await generateThumbnail(filePath, path.join(dirPath, thumbFileName));
-      } catch (thumbErr) {
-        console.warn(
-          color.yellow(
-            `⚠️ 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
-          ),
-        );
-      }
+      if (video) {
+        // 视频：转码版（浏览器实际播放）+ 封面帧缩略图。
+        // 没有"展示图"档（Lightbox 直接播 videoLink）；原片不入 data 仓库
+        // git，故也不产出 webViewLink（"查看原始文件"对视频无意义）
+        const webFileName = `${parsed.name}${WEB_VIDEO_SUFFIX}`;
+        try {
+          await generateWebVideo(filePath, path.join(dirPath, webFileName));
+        } catch (videoErr) {
+          console.warn(
+            color.yellow(
+              `⚠️ 生成 ${dirName}/${file} 转码视频失败: ${videoErr.message}`,
+            ),
+          );
+        }
+        try {
+          await generateVideoThumbnail(
+            filePath,
+            path.join(dirPath, thumbFileName),
+            meta.duration,
+          );
+        } catch (thumbErr) {
+          console.warn(
+            color.yellow(
+              `⚠️ 生成 ${dirName}/${file} 封面帧缩略图失败: ${thumbErr.message}`,
+            ),
+          );
+        }
+      } else {
+        // 照片：生成 WebP 缩略图
+        try {
+          await generateThumbnail(filePath, path.join(dirPath, thumbFileName));
+        } catch (thumbErr) {
+          console.warn(
+            color.yellow(
+              `⚠️ 生成 ${dirName}/${file} 缩略图失败: ${thumbErr.message}`,
+            ),
+          );
+        }
 
-      // 生成 WebP 展示图（Lightbox 大图用）
-      try {
-        await generateDisplayImage(filePath, path.join(dirPath, displayFileName));
-      } catch (displayErr) {
-        console.warn(
-          color.yellow(
-            `⚠️ 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
-          ),
-        );
+        // 生成 WebP 展示图（Lightbox 大图用）
+        try {
+          await generateDisplayImage(filePath, path.join(dirPath, displayFileName));
+        } catch (displayErr) {
+          console.warn(
+            color.yellow(
+              `⚠️ 生成 ${dirName}/${file} 展示图失败: ${displayErr.message}`,
+            ),
+          );
+        }
       }
 
       if (!meta.takenAt) {
         console.warn(
           color.yellow(
-            `⚠️ ${dirName}/${file} 缺失或无法解析 DateTimeOriginal，已跳过 takenAt 字段`,
+            `⚠️ ${dirName}/${file} 缺失或无法解析拍摄时间，已跳过 takenAt 字段`,
           ),
         );
       }
@@ -623,12 +850,25 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         );
       }
 
-      const item = {
-        fileName: file,
-        thumbnailLink: `${BASE_URL}/${dirName}/${thumbFileName}`,
-        displayLink: `${BASE_URL}/${dirName}/${displayFileName}`,
-        webViewLink: `${BASE_URL}/${dirName}/${file}`,
-      };
+      // 数据项：视频与照片的公共部分（坐标/时间/设备/溯源）完全同构，
+      // 差异只在链接三元组——视频是 type + videoLink，没有 displayLink /
+      // webViewLink；type 缺省即照片（output.json 老数据向后兼容）
+      const item = video
+        ? {
+            fileName: file,
+            type: 'video',
+            thumbnailLink: `${BASE_URL}/${dirName}/${thumbFileName}`,
+            videoLink: `${BASE_URL}/${dirName}/${parsed.name}${WEB_VIDEO_SUFFIX}`,
+          }
+        : {
+            fileName: file,
+            thumbnailLink: `${BASE_URL}/${dirName}/${thumbFileName}`,
+            displayLink: `${BASE_URL}/${dirName}/${displayFileName}`,
+            webViewLink: `${BASE_URL}/${dirName}/${file}`,
+          };
+      if (video && meta.duration !== undefined) {
+        item.duration = meta.duration;
+      }
       if (meta.lat !== undefined && meta.lng !== undefined) {
         item.lat = meta.lat;
         item.lng = meta.lng;
@@ -640,23 +880,33 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         item.device = device;
       }
       if (meta.geoSource) {
-        // 坐标是 fix-gps 从参照照片复制来的（预检保证坐标存在，故与 lat/lng 同进退）
+        // 坐标是 fix-gps 从参照复制来的（预检保证坐标存在，故与 lat/lng 同进退）
         item.geoSource = meta.geoSource;
       }
       return item;
     }),
   );
 
-  // 封面（预检已确认存在且带坐标），组级坐标取封面坐标
+  // 封面（预检已确认存在且带坐标），组级坐标取封面坐标。
+  // 封面可以是视频（用户 2026-10-04 拍板）：视频封面没有展示图档与原片链接
+  // （原片不入库），组级链接换成 videoLink，并带 type 供前端识别
   const cover = images.find((image) => image.file === coverFileName).meta;
   const coverStem = path.parse(coverFileName).name;
+  const coverIsVideo = isVideoFile(coverFileName);
 
   return {
     lat: cover.lat,
     lng: cover.lng,
     thumbnailLink: `${BASE_URL}/${dirName}/${coverStem}${THUMB_SUFFIX}`,
-    displayLink: `${BASE_URL}/${dirName}/${coverStem}${DISPLAY_SUFFIX}`,
-    webViewLink: `${BASE_URL}/${dirName}/${coverFileName}`,
+    ...(coverIsVideo
+      ? {
+          type: 'video',
+          videoLink: `${BASE_URL}/${dirName}/${coverStem}${WEB_VIDEO_SUFFIX}`,
+        }
+      : {
+          displayLink: `${BASE_URL}/${dirName}/${coverStem}${DISPLAY_SUFFIX}`,
+          webViewLink: `${BASE_URL}/${dirName}/${coverFileName}`,
+        }),
     fileName: coverFileName,
     dirName: dirName,
     ...(indexConfig.description ? { description: indexConfig.description } : {}),
@@ -665,9 +915,29 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
   };
 }
 
+/**
+ * 视频工具链预检（AGENTS.md S3：假设命令已存在，缺失即报错退出，不做多路兜底）。
+ * 只在本轮扫描到视频时由 processAllPhotos 调用（见其内注释的必要性偏离说明）。
+ * 视频的元数据读取走 exiftool、生成走 ffmpeg，两者都是视频分支的硬依赖。
+ */
+async function ensureVideoToolchain() {
+  // 注意参数差异：exiftool 的版本参数是 -ver（-version 会被它当成
+  // "读取 version 标签"→ "No file specified" 报错）；ffmpeg 才是 -version
+  const required = [
+    ['exiftool', ['-ver'], 'brew install exiftool'],
+    ['ffmpeg', ['-version'], 'brew install ffmpeg'],
+  ];
+  for (const [command, versionArgs, install] of required) {
+    try {
+      await execFileAsync(command, versionArgs);
+    } catch {
+      throw new Error(`未找到 ${command}，请先安装：${install}`);
+    }
+  }
+}
+
 /** 打印未通过预检的文件夹清单（一行一个，附下一步命令） */
-function reportSkippedDirs(failed) {
-  console.log(
+function reportSkippedDirs(failed) {  console.log(
     color.yellow(`\n⏭️ ${failed.length} 个文件夹未通过预检，本轮不产出数据：`),
   );
   for (const { dirName, reason, hint } of failed) {
@@ -694,6 +964,22 @@ async function processAllPhotos() {
     console.log(
       `找到 ${subDirs.length} 个子文件夹，开始按文件夹及 index.json 校验生成数据...`,
     );
+
+    // 1.5 视频工具链预检（AGENTS.md S3：假设已装、缺失即报错退出附安装命令）。
+    //     仅当存在视频文件时才检查——ffmpeg / exiftool 只服务视频（转码、抽帧、
+    //     元数据读取），纯照片文件夹缺 ffmpeg 不该被拦住（plan 已确认的必要偏离）。
+    //     视频读取走 exiftool，故 exiftool 一并在此时预检
+    const dirFileLists = await Promise.all(
+      subDirs.map((dir) =>
+        fs.readdir(path.join(IMGS_DIR, dir.name)).catch(() => []),
+      ),
+    );
+    const hasVideo = dirFileLists.some((files) =>
+      files.some((file) => isVideoFile(file) && !isDerivedFile(file)),
+    );
+    if (hasVideo) {
+      await ensureVideoToolchain();
+    }
 
     // 2. 预检阶段：全部文件夹先跑完（并发），此阶段零写操作——
     //    一次运行即可看到全部有问题的文件夹，且它们一张派生图都不会留下
@@ -754,4 +1040,19 @@ async function processAllPhotos() {
   }
 }
 
-processAllPhotos();
+// 只在作为 CLI 直接运行时才执行；被 require 时（如 test/ 下的单测）保持静默，
+// 这样纯函数可以脱离文件系统与外部命令单独测试。
+if (require.main === module) {
+  processAllPhotos();
+}
+
+// 最小公共面：只暴露无副作用的纯函数与常量，供单测导入（node --test）。
+// DERIVED_SUFFIXES 一并导出，供跨文件测试断言三个 CLI 的派生后缀口径一致。
+module.exports = {
+  normalizeExifDateTime,
+  stripTimezoneSuffix,
+  isVideoFile,
+  isDerivedFile,
+  ALLOWED_EXTS,
+  DERIVED_SUFFIXES,
+};

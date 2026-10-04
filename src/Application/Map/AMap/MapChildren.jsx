@@ -36,6 +36,11 @@ function flattenPhotos(data) {
           thumbnailLink: group.thumbnailLink,
           displayLink: group.displayLink,
           webViewLink: group.webViewLink,
+          // 视频字段（type/videoLink/duration）：封面是视频时组对象自带，
+          // 照片项为 undefined。漏透传是历史踩过的坑（displayLink 曾因此退化）
+          type: group.type,
+          videoLink: group.videoLink,
+          duration: group.duration,
           dirName: group.dirName,
           // 组级封面名（= 本项自身）。照片分组模式下必须由数据自带，
           // 因为选中项就是照片本身，无法反查所属组的封面（详见 ⓘ 面板封面判定）
@@ -65,6 +70,10 @@ function flattenPhotos(data) {
           thumbnailLink: photo.thumbnailLink,
           displayLink: photo.displayLink,
           webViewLink: photo.webViewLink,
+          // 视频字段：type === 'video' 时 Lightbox 渲染 <video>（缺省即照片）
+          type: photo.type,
+          videoLink: photo.videoLink,
+          duration: photo.duration,
           dirName: group.dirName,
           coverFileName: group.fileName,
         },
@@ -133,13 +142,55 @@ const DeviceBadgeIcon = ({ device }) => {
   );
 };
 
-// 缩略图角标文本段："14:32 · HEIC"；缺项自动省略，皆缺返回空串
+// 视频时长角标（m:ss）。duration 由管线从 mp4 元数据读出（秒，浮点）；
+// 缺失 / 非法时返回空串（宁缺毋假，不渲染 "NaN:NaN"）
+const formatDurationBadge = (duration) => {
+  if (
+    typeof duration !== 'number' ||
+    !Number.isFinite(duration) ||
+    duration <= 0
+  ) {
+    return '';
+  }
+  const total = Math.round(duration);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+// 缩略图角标文本段："14:32 · HEIC"（视频为 "14:32 · 0:34"——时长比扩展名
+// 更有信息量，视频身份已由播放三角表达）；缺项自动省略，皆缺返回空串
 // （与 markerTooltip 同惯例：filter(Boolean) + join，不渲染 "undefined ·"）。
 // 设备图标不在此函数内——SVG 是元素、无法进 join，改由 DeviceBadgeIcon 渲染
 const thumbnailBadgeText = (photo) =>
-  [formatTakenAtShort(photo.takenAt), formatFileExt(photo.fileName)]
+  (photo.type === 'video'
+    ? [
+        formatTakenAtShort(photo.takenAt),
+        formatDurationBadge(photo.duration),
+      ]
+    : [
+        formatTakenAtShort(photo.takenAt),
+        formatFileExt(photo.fileName),
+      ]
+  )
     .filter(Boolean)
     .join(' · ');
+
+// 视频播放三角（内联 SVG，惯例同 DeviceBadgeIcon：currentColor 继承底色、
+// 任何平台不依赖 emoji 字体）。卡片中央半透明圆底 + 白三角，一处定义两处复用
+// （抽屉网格与地图 marker 的 HTML 字符串各有一份样式，矢量本体共享）
+const PLAY_PATH = 'M9 6.5v11l9-5.5z';
+
+const VideoPlayIcon = ({ className, size = 22 }) => (
+  <svg
+    className={className}
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d={PLAY_PATH} />
+  </svg>
+);
 
 // Marker 悬停 tooltip 文案（AMap 原生 title），按分组模式给语义：
 // 文件夹模式显示「文件夹名（共 N 张）」，照片模式显示「文件名 · 拍摄时间」。
@@ -238,7 +289,10 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
     setInfoOpen(false); // 面板状态一并重置
   }, []);
 
-  // 1. 预加载机制：后台静默请求当前照片的前一张与后一张大图
+  // 1. 预加载机制：后台静默请求当前项的前一张与后一张大图。
+  //    照片预加载展示图（约几百 KB）；视频刻意只预加载封面帧（poster）——
+  //    视频本体单个 8~40 MB，预加载等于替用户浪费流量（plan 决策 4），
+  //    <video preload="metadata"> 只取时长与首帧，浏览器自己控制
   useEffect(() => {
     if (lightboxIndex === null || photoList.length <= 1) return;
 
@@ -247,9 +301,12 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
 
     [prevIndex, nextIndex].forEach((idx) => {
       const targetPhoto = photoList[idx];
-      // 预加载展示图（约几百 KB），而非原始文件（数 MB）
       const targetUrl =
-        targetPhoto?.displayLink || targetPhoto?.webViewLink || targetPhoto?.thumbnailLink;
+        targetPhoto?.type === 'video'
+          ? targetPhoto?.thumbnailLink
+          : targetPhoto?.displayLink ||
+            targetPhoto?.webViewLink ||
+            targetPhoto?.thumbnailLink;
       if (targetUrl) {
         const img = new Image();
         img.src = targetUrl;
@@ -262,6 +319,15 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
     if (lightboxIndex === null) return;
 
     const handleKeyDown = (e) => {
+      // 视频原生控件聚焦时吃左右键做快退/快进：让路给浏览器默认行为，
+      // 否则按方向键会"一边切图一边 seek"（Esc 不让路，仍可随时关闭）
+      if (
+        e.target &&
+        e.target.tagName === 'VIDEO' &&
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        return;
+      }
       if (e.key === 'ArrowLeft') {
         handlePrevPhoto();
       } else if (e.key === 'ArrowRight') {
@@ -278,6 +344,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   }, [lightboxIndex, handlePrevPhoto, handleNextPhoto, handleCloseLightbox]);
 
   const currentPhoto = photoList[lightboxIndex];
+  const currentIsVideo = currentPhoto?.type === 'video';
 
   // 当前照片所属组的封面名：文件夹分组模式下取组对象的 fileName（= 封面），
   // 照片分组模式下取 flattenPhotos 下发的 coverFileName。两者都不能用
@@ -291,7 +358,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       {/* 顶部城市跳转胶囊条（数据源 src/Application/cities.js，用户手动维护） */}
       <CityChips mapInstance={mapInstance} />
 
-      {/* 渲染地图 Marker */}
+      {/* 渲染地图 Marker（marker 内容是 HTML 字符串——AMap content 的约束，
+          视频三角用内联 SVG 而非 React 组件；样式在 MapIcon/index.css） */}
       {photos.map((photo, index) => {
         const photoCount =
           localStorage.getItem('hcm_group_by') === 'photo'
@@ -307,6 +375,11 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               <div class="hcm-photo-pin">
                 <div class="hcm-photo-wrapper">
                   <img class="hcm-marker-image" src="${photo.thumbnailLink}">
+                  ${
+                    photo.type === 'video'
+                      ? `<svg class="hcm-marker-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${PLAY_PATH}"/></svg>`
+                      : ''
+                  }
                   <span class="hcm-photo-count">${photoCount}</span>
                 </div>
               </div>
@@ -372,7 +445,13 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                       className={styles.photoThumb}
                       loading="lazy"
                     />
-                    {/* 方案 B：缩略图左下角角标 = 拍摄时刻 · 原始格式 · 设备图标 */}
+                    {/* 视频卡片：封面帧中央叠播放三角（时长在角标文本里） */}
+                    {p.type === 'video' && (
+                      <span className={styles.videoPlayBadge}>
+                        <VideoPlayIcon />
+                      </span>
+                    )}
+                    {/* 方案 B：缩略图左下角角标 = 拍摄时刻 · 原始格式/时长 · 设备图标 */}
                     {(p.takenAt || p.fileName || p.device) && (
                       <span className={styles.photoTimeBadge}>
                         {thumbnailBadgeText(p)}
@@ -381,7 +460,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                       </span>
                     )}
                     <div className={styles.photoMask}>
-                      <span>查看大图</span>
+                      <span>{p.type === 'video' ? '播放视频' : '查看大图'}</span>
                     </div>
                   </div>
                 ))}
@@ -462,38 +541,54 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               </button>
             )}
 
-            {/* 大图容器：采用渐进式加载 */}
+            {/* 大图容器：照片渐进式加载；视频直接 <video>（poster 即封面帧，
+                无需加载圈——preload="metadata" 只取元数据，点击才开始拉流）。
+                key 挂 videoLink：切项时强制重建元素，卸载即停止播放/下载 */}
             <div className={styles.lightboxImageWrapper}>
-              {/* 加载未完成时显示 Loading 转圈 */}
-              {!isLargeImageLoaded && (
+              {/* 加载未完成时显示 Loading 转圈（视频靠 poster，无需转圈） */}
+              {!isLargeImageLoaded && !currentIsVideo && (
                 <div className={styles.lightboxSpinner}></div>
               )}
 
-              {/* 先展示基础缩略图，高清图加载完成后覆盖 */}
-              <img
-                src={currentPhoto.thumbnailLink}
-                alt="placeholder"
-                className={`${styles.lightboxImage} ${styles.lightboxPlaceholder}`}
-              />
+              {currentIsVideo ? (
+                <video
+                  key={currentPhoto.videoLink}
+                  className={styles.lightboxImage}
+                  src={currentPhoto.videoLink}
+                  poster={currentPhoto.thumbnailLink}
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <>
+                  {/* 先展示基础缩略图，高清图加载完成后覆盖 */}
+                  <img
+                    src={currentPhoto.thumbnailLink}
+                    alt="placeholder"
+                    className={`${styles.lightboxImage} ${styles.lightboxPlaceholder}`}
+                  />
 
-              {/* 真正的高清展示图（1920px WebP 展示档，原图仅作下载入口） */}
-              <img
-                key={
-                  currentPhoto.displayLink ||
-                  currentPhoto.webViewLink ||
-                  currentPhoto.thumbnailLink
-                }
-                src={
-                  currentPhoto.displayLink ||
-                  currentPhoto.webViewLink ||
-                  currentPhoto.thumbnailLink
-                }
-                alt={`large-photo-${lightboxIndex}`}
-                className={`${styles.lightboxImage} ${
-                  isLargeImageLoaded ? styles.loaded : styles.loading
-                }`}
-                onLoad={() => setIsLargeImageLoaded(true)}
-              />
+                  {/* 真正的高清展示图（1920px WebP 展示档，原图仅作下载入口） */}
+                  <img
+                    key={
+                      currentPhoto.displayLink ||
+                      currentPhoto.webViewLink ||
+                      currentPhoto.thumbnailLink
+                    }
+                    src={
+                      currentPhoto.displayLink ||
+                      currentPhoto.webViewLink ||
+                      currentPhoto.thumbnailLink
+                    }
+                    alt={`large-photo-${lightboxIndex}`}
+                    className={`${styles.lightboxImage} ${
+                      isLargeImageLoaded ? styles.loaded : styles.loading
+                    }`}
+                    onLoad={() => setIsLargeImageLoaded(true)}
+                  />
+                </>
+              )}
             </div>
 
             {/* 方案 A：底部居中拍摄时间胶囊 */}

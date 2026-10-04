@@ -83,6 +83,63 @@ Lightbox 高清图原先直接用 `webViewLink`（原始 JPG 2~5MB/张），首�
   `flattenPhotos` 必须透传 `displayLink`，否则"按照片分组"模式退化为原图
 - "查看原始文件"入口仍指向 `webViewLink` 原图
 
+## 视频管线（2026-10-04 新增）
+
+决策过程、12 档转码体积实测与画质对比依据：`docs/plans/2026-10-04-video-mp4-support.md`。
+
+### 文件模型（真相源 = 原片）
+
+| 文件 | 角色 | 入 data 仓库 git |
+|---|---|---|
+| `X.mp4`（原片） | 真相源：坐标/拍摄时间的唯一权威，fix-gps 写它 | ✗（`.gitignore` 排除） |
+| `X_web.mp4` | 转码版，浏览器实际播放的文件 | ✓ |
+| `X_thumb.webp` | 封面帧缩略图 | ✓ |
+
+### 转码（`generateWebVideo`）
+
+```
+ffmpeg -c:v libx264 -crf 30 -preset medium -pix_fmt yuv420p \
+       -vf scale=-2:'min(720,ih)' -c:a aac -b:a 128k -movflags +faststart
+```
+
+- **CRF30 / 720p60 是用户 2026-10-04 拍板档位**（65.5 MB 原片 → 8.6 MB）；降帧到
+  30fps 只省 13% 却损失货车通过段（全片帧差峰值）的流畅度，故保留源帧率
+- `min(720,ih)`：低分辨率视频不被放大；`'…'` 是 ffmpeg filtergraph 自己的引号
+  （保护 min() 的逗号），经 execFile 无 shell 直传实测可用
+- **`+faststart` 是可流式播放的前提**：iPhone 原片 moov 在文件末尾，不加则浏览器
+  要下完整个文件才能起播（实测转码后 atom 序 `ftyp → moov`）
+- **ffmpeg 转码丢光全部元数据**（`-map_metadata 0` 也无效），随后
+  `exiftool -tagsfromfile 原片 -Keys:GPSCoordinates -Keys:CreationDate -Make -Model -XMP:all`
+  从原片捞回 → **坐标 fix-gps 写在原片上，改档位重转不会丢坐标**
+- **增量**：`_web.mp4` mtime ≥ 原片 mtime 则跳过（实测重跑 1.5 s vs 首转 16.7 s）；
+  fix-gps 补坐标会更新原片 mtime，补完坐标重跑会正确重转
+
+### 封面帧（`generateVideoThumbnail`）
+
+`ffmpeg -ss <min(5, duration/2)>` 抽一帧到临时 PNG → 复用照片缩略图的 sharp 链
+（300×300 cover + entropy → webp，与 `generateThumbnail` 同参数）。
+
+### output.json 契约（视频项）
+
+`type: "video"` + `videoLink` + `duration`（秒）；**缺 `type` 即照片**，老数据向后
+兼容。视频**没有** `displayLink`（无展示图档，Lightbox 直接播 `videoLink`）也**没有**
+`webViewLink`（原片不入库，"查看原始文件"对视频无意义）。封面可以是视频
+（用户拍板，数据层与照片等价）：封面为视频时组级是 `type` + `videoLink`。
+前端 `flattenPhotos` 必须透传 `type` / `videoLink` / `duration`（`displayLink`
+漏透传的老坑同样适用于这三个字段）。
+
+### 口径与判据
+
+- 三处 `ALLOWED_EXTS`（process-photos / fix-gps / delete-photo）同步加 `.mp4`；
+  三处 `DERIVED_SUFFIXES = [_thumb.webp, _display.webp, _web.mp4]` 有跨文件单测
+  锁定一致（`test/video-support.test.js`），改任何一处不同步都会在 `test:cli` 爆
+- 视频与照片**同口径参与 GPS 硬拦**（缺坐标整组跳过）；`geoSource` 对视频同样有效
+- 视频元数据读取走 exiftool（exifr 读不了 mp4），详见 `photo-metadata.md` 视频小节
+- **ffmpeg / exiftool 预检仅当本轮扫描到视频才执行**——S3 的必要偏离（plan 已确认）：
+  纯照片文件夹缺 ffmpeg 不该被拦。注意 exiftool 版本参数是 `-ver`（`-version` 会被
+  它当成"读 version 标签"→ "No file specified"）
+- 一致性检查的孤儿后缀集合含 `_web.mp4`；视频原片进基名集合，转码版不算孤儿
+
 ## 删除照片 `npm run del-photo`（2026-09-30 新增）
 
 完整决策过程与修订记录：`docs/plans/2026-09-30-photo-deletion-workflow.md`。
@@ -92,7 +149,8 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 ```
 
 `delete-photo.js` 流程：参数/路径校验（拒绝 `..` 与路径分隔符）→ 封面硬拦 →
-「删后为空」硬拦 → 删除原图 + `<名>_thumb.webp` + `<名>_display.webp` → 打印一行
+「删后为空」硬拦 → 删除原媒体 + 派生文件（照片：`<名>_thumb.webp` +
+`<名>_display.webp`；视频：`<名>_thumb.webp` + `<名>_web.mp4`，缺失的跳过）→ 打印一行
 提示（`output.json` **尚未更新**，需自行执行 `npm run photos`）。
 
 **不自动重跑管线**（2026-09-30 修订 v4）：删单张的耗时几乎全是全量重跑，连删多张
@@ -120,8 +178,8 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 
 `npm run photos` 末尾会打印一段「数据一致性检查」：
 
-- 检查项：**孤儿派生文件**——`_thumb.webp` / `_display.webp` 找不到同名原图。
-  它们会随 `data` 仓库一起部署（占体积、且说明原图已删但派生图漏删）
+- 检查项：**孤儿派生文件**——`_thumb.webp` / `_display.webp` / `_web.mp4` 找不到
+  同名原媒体。它们会随 `data` 仓库一起部署（占体积、且说明原媒体已删但派生文件漏删）
 - 只报告，**不修改任何文件、不改变退出码、不调用任何外部命令**（含 git）；
   发现不一致时列出全部路径，并附一行可自行复制的 `rm` 清理命令文本
 - 报告前缀用 `[不一致]` 而非 `[跳过]`，与"未通过预检的文件夹"这一层判定区分开

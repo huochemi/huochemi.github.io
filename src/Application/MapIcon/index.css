@@ -38,6 +38,18 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
+/* 视频条目的播放三角（封面为视频时出现）：右下角，与左下角计数互补。
+   内联 SVG 从 marker 的 HTML 字符串传入，尺寸/配色在这里统一 */
+.hcm-photo-pin > .hcm-photo-wrapper > .hcm-marker-play {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  color: #ffffff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
+}
+
 /* 底部小三角（标记指引箭头） */
 .hcm-photo-pin::after {
   content: '';

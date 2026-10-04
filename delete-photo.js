@@ -1,8 +1,9 @@
 /**
- * delete-photo.js — 删除一张照片（原图 + 派生图），不重跑管线
+ * delete-photo.js — 删除一张照片或视频（原媒体 + 派生文件），不重跑管线
  *
  * 计划文档：docs/plans/2026-09-30-photo-deletion-workflow.md
  * （决策依据见该文件；「不重跑管线」为 2026-09-30 修订 v4，理由见该文件）
+ * 视频支持：docs/plans/2026-10-04-video-mp4-support.md
  *
  * 用法（在站点仓库根目录执行）：
  *   npm run del-photo -- "<文件夹名>" "<文件名>"
@@ -12,8 +13,9 @@
  *   1. 校验参数 / 路径 / 扩展名，拒绝路径穿越
  *   2. 目标是所属文件夹 index.json 的封面 → 报错退出（封面不可删除：它提供该分组
  *      的坐标与缩略图来源，需人工改 index_photo 指定新封面后再删）
- *   3. 删除后该文件夹不再有原图 → 报错退出（管线要求每组至少 1 张）
- *   4. 删除原图与 <名>_thumb.webp / <名>_display.webp（直接删除，不进回收站）
+ *   3. 删除后该文件夹不再有原媒体 → 报错退出（管线要求每组至少 1 张）
+ *   4. 删除原媒体与派生文件（照片：<名>_thumb.webp / <名>_display.webp；
+ *      视频：<名>_thumb.webp / <名>_web.mp4。缺失的直接跳过）
  *   5. 打印一行提示：output.json **尚未更新**，需自行执行 npm run photos
  *      （刻意不自动重跑：连删多张时不必为每张付一次全量重跑的等待，v4）
  *
@@ -25,10 +27,16 @@ const path = require('path');
 
 const IMGS_DIR = path.join(__dirname, '../data/photos');
 
-// 与 process-photos.js 保持一致的图片判定（改一处必须改两处）
-const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff']);
+// 与 process-photos.js 保持一致的媒体判定（改一处必须改两处）：
+// 图片 + 视频（mp4）。删视频时待删清单是 原片 + 缩略图 + 转码版
+const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
 const THUMB_SUFFIX = '_thumb.webp';
 const DISPLAY_SUFFIX = '_display.webp';
+const WEB_VIDEO_SUFFIX = '_web.mp4';
+// 派生文件后缀（与 process-photos.js 的口径同值副本，改需同步；
+// 跨文件测试锁定一致——"删后为空"判定必须排除它们）
+const DERIVED_SUFFIXES = [THUMB_SUFFIX, DISPLAY_SUFFIX, WEB_VIDEO_SUFFIX];
+const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
 
 // 非 TTY（管道 / 重定向到文件）或 NO_COLOR 时不着色，避免日志混入 ANSI 转义码
 const COLOR_ENABLED =
@@ -93,7 +101,7 @@ async function deletePhoto(dirName, fileName) {
   const filePath = path.join(dirPath, fileName);
   const fileStat = await fs.stat(filePath).catch(() => null);
   if (!fileStat || !fileStat.isFile()) {
-    throw new Error(`照片不存在：${dirName}/${fileName}`);
+    throw new Error(`文件不存在：${dirName}/${fileName}`);
   }
 
   // 封面校验：封面不可删除，必须由人先改 index.json
@@ -109,7 +117,7 @@ async function deletePhoto(dirName, fileName) {
   if (indexConfig.index_photo === fileName) {
     throw new Error(
       [
-        `"${fileName}" 是文件夹 [${dirName}] 的封面照片，封面不可删除。`,
+        `"${fileName}" 是文件夹 [${dirName}] 的封面（照片或视频），封面不可删除。`,
         '原因：封面提供该分组的坐标与缩略图来源，管线要求封面必须存在且有 GPS。',
         '做法：先修改 index.json 的 "index_photo" 指定新封面（新封面必须有 GPS），',
         '      再重跑本命令删除这张。',
@@ -118,14 +126,14 @@ async function deletePhoto(dirName, fileName) {
     );
   }
 
-  // 删后为空校验：与 process-photos.js 的图片过滤保持一致
+  // 删后为空校验：与 process-photos.js 的媒体过滤保持一致（排除全部派生文件）
   const files = await fs.readdir(dirPath);
-  const images = files.filter(
+  const mediaFiles = files.filter(
     (file) =>
       ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-      !file.includes('_thumb'),
+      !isDerivedFile(file),
   );
-  const remaining = images.filter((file) => file !== fileName);
+  const remaining = mediaFiles.filter((file) => file !== fileName);
   if (remaining.length === 0) {
     throw new Error(
       [
@@ -135,12 +143,16 @@ async function deletePhoto(dirName, fileName) {
     );
   }
 
-  // 待删清单：原图 + 两张派生图（派生图缺失则跳过，不报错）
+  // 待删清单：原媒体 + 派生文件（派生文件缺失则跳过，不报错）。
+  // 照片派生 = 缩略图 + 展示图；视频派生 = 缩略图 + 转码版（_web.mp4）
   const { name: stem } = path.parse(fileName);
+  const isVideo = path.extname(fileName).toLowerCase() === '.mp4';
   const candidates = [
-    { fileName, kind: '原图' },
+    { fileName, kind: isVideo ? '视频原片' : '原图' },
     { fileName: `${stem}${THUMB_SUFFIX}`, kind: '缩略图' },
-    { fileName: `${stem}${DISPLAY_SUFFIX}`, kind: '展示图' },
+    isVideo
+      ? { fileName: `${stem}${WEB_VIDEO_SUFFIX}`, kind: '转码视频' }
+      : { fileName: `${stem}${DISPLAY_SUFFIX}`, kind: '展示图' },
   ];
   const targets = [];
   for (const candidate of candidates) {
@@ -150,10 +162,10 @@ async function deletePhoto(dirName, fileName) {
     }
   }
 
-  console.log(color.cyan('\n=== 删除照片 ==='));
+  console.log(color.cyan('\n=== 删除媒体文件 ==='));
   console.log(`文件夹：${dirName}`);
   console.log(`文件：${fileName}`);
-  console.log(`该文件夹剩余原图：${remaining.length} 张（删除后）`);
+  console.log(`该文件夹剩余媒体文件：${remaining.length} 个（删除后）`);
   console.log('将删除以下文件（直接删除，不进回收站）：');
   for (const target of targets) {
     console.log(`  - ${target.kind}：${dirName}/${target.fileName}`);
@@ -201,7 +213,7 @@ async function main() {
 
   if (!ALLOWED_EXTS.has(path.extname(fileName).toLowerCase())) {
     throw new Error(
-      `不支持的图片格式："${fileName}"——仅支持 ${[...ALLOWED_EXTS].join(' / ')}（派生图由原图自动清理，不能作为删除目标）`,
+      `不支持的媒体格式："${fileName}"——仅支持 ${[...ALLOWED_EXTS].join(' / ')}（派生图/转码视频由原文件自动清理，不能作为删除目标）`,
     );
   }
 
