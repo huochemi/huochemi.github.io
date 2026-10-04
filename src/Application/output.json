@@ -895,6 +895,204 @@
     ]
   },
   {
+    "lat": 31.971152777777775,
+    "lng": 118.78961111111111,
+    "thumbnailLink": "/data/photos/南京南站东南角/DSC04920_thumb.webp",
+    "displayLink": "/data/photos/南京南站东南角/DSC04920_display.webp",
+    "webViewLink": "/data/photos/南京南站东南角/DSC04920.JPG",
+    "fileName": "DSC04920.JPG",
+    "dirName": "南京南站东南角",
+    "description": "南京南站东南角",
+    "takenAt": "2026-10-03T14:29:49",
+    "photos": [
+      {
+        "fileName": "DSC04909.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04909_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04909_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04909.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:13",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04911.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04911_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04911_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04911.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:17",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04914.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04914_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04914_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04914.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:25",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04915.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04915_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04915_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04915.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:38",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04920.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04920_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04920_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04920.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:49",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04923.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04923_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04923_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04923.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:30:42",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04927.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04927_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04927_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04927.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:32:04",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04929.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04929_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04929_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04929.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:32:28",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04932.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04932_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04932_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04932.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:33:09",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04936.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04936_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04936_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04936.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:33:20",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04938.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04938_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04938_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04938.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:33:25",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04941.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04941_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04941_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04941.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:33:34",
+        "device": "camera",
+        "geoSource": "IMG_5818.JPG"
+      },
+      {
+        "fileName": "DSC04945.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04945_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04945_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04945.JPG",
+        "lat": 31.97189722222222,
+        "lng": 118.7904361111111,
+        "takenAt": "2026-10-03T14:33:57",
+        "device": "camera",
+        "geoSource": "IMG_5820.HEIC"
+      },
+      {
+        "fileName": "DSC04946.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04946_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04946_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04946.JPG",
+        "lat": 31.97189722222222,
+        "lng": 118.7904361111111,
+        "takenAt": "2026-10-03T14:33:57",
+        "device": "camera",
+        "geoSource": "IMG_5820.HEIC"
+      },
+      {
+        "fileName": "DSC04948.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/DSC04948_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/DSC04948_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/DSC04948.JPG",
+        "lat": 31.97189722222222,
+        "lng": 118.7904361111111,
+        "takenAt": "2026-10-03T14:34:03",
+        "device": "camera",
+        "geoSource": "IMG_5820.HEIC"
+      },
+      {
+        "fileName": "IMG_5817.JPG",
+        "thumbnailLink": "/data/photos/南京南站东南角/IMG_5817_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/IMG_5817_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/IMG_5817.JPG",
+        "lat": 31.971152777777775,
+        "lng": 118.78961111111111,
+        "takenAt": "2026-10-03T14:29:00",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5820.HEIC",
+        "thumbnailLink": "/data/photos/南京南站东南角/IMG_5820_thumb.webp",
+        "displayLink": "/data/photos/南京南站东南角/IMG_5820_display.webp",
+        "webViewLink": "/data/photos/南京南站东南角/IMG_5820.HEIC",
+        "lat": 31.97189722222222,
+        "lng": 118.7904361111111,
+        "takenAt": "2026-10-03T14:34:02",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 39.760883,
     "lng": 116.166786,
     "thumbnailLink": "/data/photos/房山长阳-碧桂园温泉小区C区/DSC02780_thumb.webp",
