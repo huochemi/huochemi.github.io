@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "path": ".",
+    },
+    {
+      "path": "../../huochemi/data",
+    },
+    {
+      "path": "../../huochemi/photos-originals",
+    },
+  ],
+  "settings": {},
+}
