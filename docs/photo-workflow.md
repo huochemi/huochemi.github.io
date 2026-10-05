@@ -109,8 +109,9 @@
    `docs/plans/2026-10-04-fix-gps-cleanup-and-anchor-merge.md`
 3. 维护 `index.json`（**两个字段均必填**：`index_photo` 指定封面、`description`
    展示名，可为空串 `""`）。新建点位可用脚手架一次建好 data 侧目录与 `index.json`：
-   `npm run new-place -- "<地点>" --cover "<封面文件名>" [--desc "<展示名>"]`
-   （不传 `--desc` 写空串；封面必须在原图仓中存在——脚本只校验存在性、**不校验 GPS**，
+   `npm run new-place -- "<点位名>" --cover "<封面文件名>"`
+   （`description` 取点位名写入；要换成更短的展示名，建好后直接编辑 `index.json` 再重跑
+   `photos`。封面必须在原图仓中存在——脚本只校验存在性、**不校验 GPS**，
    判定权唯独属于 `npm run photos` 的预检。已有 `index.json` 时硬拦不覆盖。详见
    `plans/2026-10-05-new-place-scaffold.md`）
 4. `npm run photos`：生成派生图 + `src/Application/output.json`

@@ -4,9 +4,11 @@
  * 计划文档：docs/plans/2026-10-05-new-place-scaffold.md
  *
  * 用法（在站点仓库根目录执行）：
- *   npm run new-place -- "<点位名>" --cover "<封面文件名>" [--desc "<展示名>"]
+ *   npm run new-place -- "<点位名>" --cover "<封面文件名>"
  *   例：npm run new-place -- "北京市-水南庄道口" --cover IMG_2315.HEIC
- *       npm run new-place -- "北京-狼垡公园北京动车段" --cover DSC02965.JPG --desc "狼垡公园动车段"
+ *
+ * 位置参数只有一个含义：点位名 = 原图仓/data 仓的目录名，同时也是 index.json 的
+ * description（展示名）。想要更短的展示名，建好后直接编辑 index.json 再重跑 photos。
  *
  * 行为（先校验、后写入——全部前置条件通过后才做任何文件系统变更，
  * 任一失败即退出码 1 且零副作用，沿用 photo-ops.md「硬拦排在写操作之前」的纪律）：
@@ -17,7 +19,7 @@
  *     4. data 仓该点位尚无 index.json（已存在即硬拦，绝不覆盖人工内容）
  *   写入：
  *     5. 建 data 侧目录（已存在则跳过）
- *     6. 写 index.json —— 两个 key 恒存在，description 取 --desc，未传则空串 ""
+ *     6. 写 index.json —— 两个 key 恒存在，description 取点位名
  *     7. 提示下一步：npm run photos
  *
  * 封面必须由人指定：不传 --cover 即列出候选清单并报错退出，不做任何推导
@@ -66,13 +68,13 @@ function printUsage() {
   console.log(
     [
       '用法（需在站点仓库根目录执行）：',
-      '  npm run new-place -- "<点位名>" --cover "<封面文件名>" [--desc "<展示名>"]',
+      '  npm run new-place -- "<点位名>" --cover "<封面文件名>"',
       '例：',
       '  npm run new-place -- "北京市-水南庄道口" --cover IMG_2315.HEIC',
-      '  npm run new-place -- "北京-狼垡公园北京动车段" --cover DSC02965.JPG --desc "狼垡公园动车段"',
       '',
       '说明：建 data 仓点位目录并起草 index.json；原图仓目录与媒体须已就位。',
-      '     不传 --cover 会列出该点位可选的媒体文件名。',
+      '     点位名同时写入 index.json 的 description（展示名），要换成更短的展示名',
+      '     直接编辑该文件即可。不传 --cover 会列出该点位可选的媒体文件名。',
     ].join('\n'),
   );
 }
@@ -107,21 +109,25 @@ async function exists(targetPath) {
 }
 
 /**
- * 解析命令行参数：1 个位置参数（点位名）+ 可选 --cover / --desc
- * 风格与 fix-gps.js 一致（取值后 i++ 跳过；取值不得以 -- 开头）
+ * 解析命令行参数：1 个位置参数（点位名）+ 可选 --cover
+ * 风格与 fix-gps.js 一致（取值后 i++ 跳过；取值不得以 -- 开头）。
+ * 任何未定义的 `--xxx` 一律报错退出——不把未知参数当位置参数吞掉（模糊兼容会让
+ * 打错参数的人拿到"参数数量不对"这种指不到问题本身的报错）。
  */
 function parseArgs(argv) {
-  const flags = { cover: undefined, desc: undefined };
+  const flags = { cover: undefined };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--cover' || arg === '--desc') {
+    if (arg.startsWith('--')) {
+      if (arg !== '--cover') {
+        throw new Error(`未知参数：${arg}`);
+      }
       const value = argv[i + 1];
       if (value === undefined || value.startsWith('--')) {
         throw new Error(`参数 ${arg} 缺少值`);
       }
-      if (arg === '--cover') flags.cover = value;
-      else flags.desc = value;
+      flags.cover = value;
       i++;
     } else {
       positional.push(arg);
@@ -129,13 +135,13 @@ function parseArgs(argv) {
   }
   if (positional.length !== 1) {
     throw new Error(
-      `参数数量不对：需要 1 个点位名（可带 --cover / --desc），实际 ${positional.length} 个`,
+      `参数数量不对：需要 1 个点位名（可带 --cover），实际 ${positional.length} 个`,
     );
   }
   return { place: positional[0], ...flags };
 }
 
-async function createPlace(placeName, coverFileName, description) {
+async function createPlace(placeName, coverFileName) {
   const originDirPath = path.join(ORIGIN_DIR, placeName);
   const dataDirPath = path.join(IMGS_DIR, placeName);
 
@@ -205,11 +211,12 @@ async function createPlace(placeName, coverFileName, description) {
   // --- 写入阶段：全部校验已通过 ---
 
   await fs.mkdir(dataDirPath, { recursive: true });
-  // 两个 key 恒存在（契约，用户 2026-10-05 拍板）：未传 --desc 写空串，
-  // 不写"省略该字段"的形态——那会让下游出现"字段有时有、有时没有"的兼容分支。
+  // 两个 key 恒存在（契约）：description 取点位名——位置参数只有一个含义，
+  // 不设第二个参数去装展示名（要更短的名字就建好后直接编辑 index.json，
+  // 本工具对已存在的 index.json 恒硬拦、不覆盖）。
   const indexConfig = {
     index_photo: coverFileName,
-    description: description ?? '',
+    description: placeName,
   };
   await fs.writeFile(
     indexPath,
@@ -221,11 +228,7 @@ async function createPlace(placeName, coverFileName, description) {
   console.log(`点位：${placeName}`);
   console.log(`封面：${coverFileName}`);
   console.log(
-    `展示名：${
-      indexConfig.description === ''
-        ? '(空串——稍后可直接编辑 index.json 补上)'
-        : indexConfig.description
-    }`,
+    `展示名：${indexConfig.description}（= 点位名；要换成更短的展示名，编辑 index.json）`,
   );
   console.log(color.green(`✅ 已创建 data 仓目录与 index.json：${indexPath}`));
   console.log(
@@ -249,7 +252,7 @@ async function main() {
   assertPlainName(args.place, '点位名');
   if (args.cover !== undefined) assertPlainName(args.cover, '封面文件名');
 
-  await createPlace(args.place, args.cover, args.desc);
+  await createPlace(args.place, args.cover);
 }
 
 main().catch((err) => {
