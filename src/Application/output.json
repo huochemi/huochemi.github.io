@@ -807,6 +807,94 @@
     ]
   },
   {
+    "lat": 39.90069444444444,
+    "lng": 116.49675,
+    "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_4278_thumb.webp",
+    "displayLink": "/data/photos/北京市-水南庄道口/IMG_4278_display.avif",
+    "fileName": "IMG_4278.HEIC",
+    "dirName": "北京市-水南庄道口",
+    "description": "北京市-水南庄道口",
+    "takenAt": "2024-12-15T10:08:54",
+    "photos": [
+      {
+        "fileName": "IMG_2315.HEIC",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_2315_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_2315_display.avif",
+        "lat": 39.90068888888889,
+        "lng": 116.49664444444444,
+        "takenAt": "2024-08-26T19:55:51",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_2322.mp4",
+        "type": "video",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_2322_thumb.webp",
+        "videoLink": "/data/photos/北京市-水南庄道口/IMG_2322_web.mp4",
+        "duration": 7.97166666666667,
+        "lat": 39.9007,
+        "lng": 116.4966,
+        "takenAt": "2024-08-26T20:17:34",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4275.HEIC",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_4275_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_4275_display.avif",
+        "lat": 39.90036666666666,
+        "lng": 116.49648333333333,
+        "takenAt": "2024-12-15T09:47:17",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4278.HEIC",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_4278_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_4278_display.avif",
+        "lat": 39.90069444444444,
+        "lng": 116.49675,
+        "takenAt": "2024-12-15T10:08:54",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4295.HEIC",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_4295_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_4295_display.avif",
+        "lat": 39.90051666666667,
+        "lng": 116.49655277777778,
+        "takenAt": "2024-12-15T10:11:04",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5290.JPG",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_5290_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_5290_display.avif",
+        "lat": 39.900686111111106,
+        "lng": 116.49661944444445,
+        "takenAt": "2026-08-22T20:26:43",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5292.mp4",
+        "type": "video",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_5292_thumb.webp",
+        "videoLink": "/data/photos/北京市-水南庄道口/IMG_5292_web.mp4",
+        "duration": 25.6916666666667,
+        "lat": 39.9006,
+        "lng": 116.4966,
+        "takenAt": "2026-08-22T20:29:30",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_7934.JPG",
+        "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_7934_thumb.webp",
+        "displayLink": "/data/photos/北京市-水南庄道口/IMG_7934_display.avif",
+        "lat": 39.900305555555555,
+        "lng": 116.49662777777777,
+        "takenAt": "2025-07-06T17:42:44",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 32.01811111111111,
     "lng": 118.80802222222222,
     "thumbnailLink": "/data/photos/南京中和桥道口/IMG_5806_thumb.webp",
