@@ -193,3 +193,26 @@ GPSLatitude**——对已有原生 GPS 的视频再用 fix-gps 写法写不同�
 （实测写入 31.0/121.0 后读回仍 32.0181/118.808）。这不构成真实路径问题：fix-gps
 只把"缺坐标"的媒体进目标清单、永不覆盖已有坐标（与照片同纪律），因此 XMP 写入
 只发生在无原生坐标的视频上，此时读回即写入值（端到端实测一致）。
+
+## 坐标系纪律：存储永远是 WGS84，GCJ02 只是显示派生（2026-10-05）
+
+决策记录：`docs/plans/2026-10-05-fix-gps-review-amap-embed.md`。
+
+- **全站统一口径**：EXIF、`output.json`、`--plan-stdin` 的 plan JSON、写入链路，坐标
+  一律 WGS84。GCJ02（高德火星坐标）**只允许出现在"紧贴地图渲染"的显示层**——主站
+  经 `AMap.convertFrom` 在线转换，fix-gps 审阅页经 `wgs84ToGcj02()`（fix-gps.js 内嵌
+  纯算法，node 侧离线算）在**生成 data 时**为每个锚点附加 `gcjLat` / `gcjLng` 两个字段
+- **审阅页数据契约**：`anchors[]` 项的 `lat` / `lng` 永远是 WGS84 原值，`gcjLat` /
+  `gcjLng` 是仅供第 5 区底图落点的派生值——两者共存，改代码时不得让后者覆盖前者
+  （覆盖即坐标污染，写入链路读的是 WGS84 那对）
+- `wgs84ToGcj02` 的境外直通不是兜底：GCJ02 偏移只对中国境内坐标有定义，境外原样返回
+  （与高德官方 convertFrom 行为一致，实测东京点逐位相同）；境内控制点与官方偏差
+  < 0.1 m（对照值锁在 `test/gcj02.test.js`，取自 2026-10-05 官方 convertFrom 实测）
+- **审阅页第 5 区底图**：卫星影像 + 路网线（主站 `BaseMapSwitch` 的 `satellite-road`
+  同款组合）。key 取自 `.env` 的 `REACT_APP_AMAP_API_KEY`（JS API 平台，静态地图/
+  Web 服务类型不适用——实测返回 `USERKEY_PLAT_NOMATCH`），缺 key 时 `--review` 在
+  node 侧预检报错退出（附解决步骤），key 的判定点**只有这一处**，页面不做二次探测
+- file:// 实测（2026-10-05）：审阅页在 `file://` 协议下加载高德 JS API、渲染卫星底图
+  全部正常，无域名白名单/安全密钥阻塞；**key 无效时地图照样完整渲染**（坏 key 页与
+  正常页截图 MD5 一致）——渲染层的 key 校验目前不生效，审阅页仍保留"complete 事件
+  8 秒未触发即显式报错"的判据作未来防线

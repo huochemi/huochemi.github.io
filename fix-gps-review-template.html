@@ -67,6 +67,19 @@
           padding: 12px; font-size: 12px; color: #aaa; }
   .note b { color: #ddd; font-weight: 500; }
   .map { background: #262626; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; }
+  #amap { width: 100%; height: 380px; border-radius: 8px; overflow: hidden; background: #1a1a1a; }
+  /* 标记 = 16×16 圆点（固定尺寸，anchor:center 才能让圆心对准坐标）；
+     标签绝对定位溢出到右侧、不参与圆点尺寸——否则胶囊中心对齐会让整点偏移 */
+  .amk { position: relative; width: 16px; height: 16px; }
+  .amk i { position: absolute; inset: 0; border-radius: 50%;
+           border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+  .amk b { position: absolute; left: 21px; top: 50%; transform: translateY(-50%);
+           white-space: nowrap; font: 500 11px/1.6 system-ui, -apple-system, "PingFang SC", sans-serif;
+           color: #fff; background: rgba(15,15,15,0.8);
+           border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 2px 8px; }
+  .amap-err { padding: 14px; font-size: 12px; line-height: 1.9; color: #FAC775; }
+  .ami { font: 12px/1.75 system-ui, -apple-system, "PingFang SC", sans-serif; color: #333; }
+  .ami b { font-weight: 600; }
   .empty { font-size: 12px; color: #888; padding: 20px; }
   /* ---- 时间轴总览（密度条 + 胶片条） ---- */
   .tl-wrap { background: #262626; border: 1px solid rgba(255,255,255,0.08);
@@ -176,12 +189,9 @@
   </div>
   <pre id="planJson"></pre>
 
-  <h2>5 · 位置相对分布（离线示意）</h2>
-  <div class="map" id="map"></div>
-  <div class="note" style="margin-top:12px">
-    <b>这是按经纬度等比绘制的相对位置，不是地图底图。</b>它只回答一个问题：各处之间离得多远，
-    分组时心里有数。此处已按"同一处"合并过（相距 5 m 内算一处），跨多远的距离仍算"同一处"，是你的判断。
-  </div>
+  <h2>5 · 位置分布（高德卫星影像 + 路网线）</h2>
+  <div class="hint">底图与主站「卫星+路网」档同款。<b>标记用 GCJ02 落点</b>——EXIF 里存的是 WGS84，页面绘制前做了坐标转换，所以可与高德 App 直接对照（不转的话会偏数百米）。颜色 = 归属位置，标签里的张数随改投实时更新；点标记看该处详情。相距 5 m 内的锚点已并为同一处。</div>
+  <div class="map"><div id="amap"></div></div>
 
 </div>
 
@@ -210,6 +220,9 @@
     <p>与所属位置代表拍摄时间差超过 60 秒的照片，徽章带 ⚠ 标记并显示真实差值。勾选「只看时间差大的」可筛出真正需要看图确认的少数几张，其余大概率是准的。</p>
     <h3>4 · 写入</h3>
     <p>点「复制写入命令」→ 回终端<b>直接粘贴、回车</b> → 打印分组摘要后按一次 <span class="kbd">y</span> 写入全部。命令自带单行 JSON，剪贴板只复制这一次——复制后不要再复制其他内容。页面开着太久没关系：写入前终端会重新比对锚点坐标，对不上会拒绝。</p>
+    <h3>5 · 位置分布（高德卫星底图）</h3>
+    <p>各处位置按 <b>GCJ02 坐标</b>落在卫星影像 + 路网线上（与主站「卫星+路网」档同款底图）。EXIF 里存的是 WGS84，页面绘制前做了坐标转换，所以标记不会偏数百米，可直接与高德 App 对照。标记颜色 = 归属位置，标签里的张数随你的改投实时变化；点标记可看该处的坐标、来源与归属张数。</p>
+    <p class="tip">该区需要联网（底图来自高德）。加载失败时区内会直接给出排查步骤，其余四个区块不受影响。</p>
     <h3>快捷键（对照弹窗内）</h3>
     <p><span class="kbd">←</span> 上一张　<span class="kbd">→</span> 下一张　<span class="kbd">A</span>–<span class="kbd">E</span> 改投给对应锚点　<span class="kbd">Esc</span> 关闭弹窗 / 本说明</p>
   </div>
@@ -624,71 +637,113 @@ function render() {
   renderPlan();
   renderDensity();
   renderStrip();
+  syncAmapLabels(); // 地图标签里的张数随改投联动（底图未就绪时静默返回）
   var d = doubts();
   document.getElementById('doubtPill').textContent = '⚠ 时间差大 ' + d.length + ' 张（> 60 秒）';
 }
 
-function renderMap() {
-  var host = document.getElementById('map');
-  host.textContent = '';
-  var W = 100, H = 62;
-  var pad = 14;
-  var lats = anchors.map(function (a) { return a.lat; });
-  var lngs = anchors.map(function (a) { return a.lng; });
-  var minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
-  var minLng = Math.min.apply(null, lngs), maxLng = Math.max.apply(null, lngs);
-  var spanLat = Math.max(maxLat - minLat, 1e-6), spanLng = Math.max(maxLng - minLng, 1e-6);
-  var span = Math.max(spanLat, spanLng);
-  function px(a) {
-    return {
-      x: pad + ((a.lng - minLng) / span) * (W - pad * 2) + (span - spanLng) / span * (W - pad * 2) / 2,
-      y: H - pad - ((a.lat - minLat) / span) * (H - pad * 2) - (span - spanLat) / span * (H - pad * 2) / 2
-    };
+/* ---- 5 · 位置分布（高德卫星影像 + 路网线） ----
+   底图与主站 BaseMapSwitch 的 satellite-road 档同款组合。落点用 node 侧算好的
+   GCJ02（DATA.anchors 的 gcjLat / gcjLng）；WGS84 原值只用于写入链路，不参与
+   显示。key 由 fix-gps.js 从 .env 读取后注入——缺 key 时页面根本不会生成，
+   所以这里不需要"没有 key 怎么办"的分支（判定点单一，只在 node 侧判一次）。 */
+var amap = null;
+var amapMarkers = [];
+var amapInfo = null;
+
+/** 标记内容：16×16 圆点 + 右侧常显标签（标签绝对定位，不参与圆点尺寸） */
+function markerContent(i, n) {
+  return '<div class="amk">' +
+    '<i style="background:' + gColor(i) + '"></i>' +
+    '<b>位置 ' + String.fromCharCode(65 + i) + '（' + n + ' 张）</b>' +
+    '</div>';
+}
+
+/** 改投后同步标签里的张数（与顶部统计、分组卡同源：counts()） */
+function syncAmapLabels() {
+  if (!amap || !amapMarkers.length) return;
+  var c = counts();
+  amapMarkers.forEach(function (mk, i) { mk.setContent(markerContent(i, c[i])); });
+}
+
+/** 底图相关失败一律显式报错 + 给排查步骤（不做回退、不自动重试、不放按钮） */
+function amapError(msg) {
+  document.getElementById('amap').innerHTML =
+    '<div class="amap-err">❌ ' + msg +
+    '<br><br>排查步骤：<br>' +
+    '① 本机能否访问 https://webapi.amap.com/maps<br>' +
+    '② .env 里的 REACT_APP_AMAP_API_KEY 是否仍有效<br>' +
+    '③ 高德控制台该 key 的日配额是否用尽<br><br>处理完刷新本页。</div>';
+}
+
+function openAmapInfo(i) {
+  var a = anchors[i];
+  var src = a.geoSource ? '📋 复制坐标（自 ' + a.geoSource + '）' : '📍 原生 GPS';
+  var members = a.members && a.members.length > 1
+    ? '<br>同处锚点 ' + a.members.length + ' 张：' + a.members.join('、')
+    : '';
+  amapInfo.setContent(
+    '<div class="ami"><b>位置 ' + String.fromCharCode(65 + i) + ' · ' + a.file + '</b><br>' +
+    'GPS ' + a.lat.toFixed(6) + ', ' + a.lng.toFixed(6) +
+    '<br>' + src + '　拍摄 ' + fmt(a.time) + members +
+    '<br>' + counts()[i] + ' 张缺坐标照片将采用此坐标</div>'
+  );
+  amapInfo.open(amap, [a.gcjLng, a.gcjLat]);
+}
+
+function renderAmap() {
+  try {
+    var pts = anchors.map(function (a) { return [a.gcjLng, a.gcjLat]; });
+    amap = new AMap.Map('amap', {
+      viewMode: '2D',
+      zoom: 16,
+      center: pts[0],
+      zooms: [3, 19],
+      layers: [new AMap.TileLayer.Satellite(), new AMap.TileLayer.RoadNet()]
+    });
+    amapInfo = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -14) });
+    amapMarkers = anchors.map(function (a, i) {
+      var mk = new AMap.Marker({
+        position: [a.gcjLng, a.gcjLat],
+        content: markerContent(i, counts()[i]),
+        anchor: 'center',
+        zIndex: 100 + i,
+        map: amap
+      });
+      mk.on('click', function () { openAmapInfo(i); });
+      return mk;
+    });
+    // 只有一处位置时不 fitView：fitView 会把单点顶到最大级别，反而看不出周边
+    if (amapMarkers.length > 1) {
+      amap.setFitView(amapMarkers, false, [90, 90, 90, 90], 18);
+    }
+    /* key 无效 / 日配额用尽 / 网络受限时，SDK 照样加载成功、AMap.Map 也不抛错，
+       只是**永远不出图**——不设判据的话页面就是一块灰底，看不出原因，属最坏的
+       静默失败。判据用高德的 complete（"首次渲染完成"）事件，实测可用；
+       8 秒未触发即认定失败（底图首屏远快于此，不会误报）。 */
+    var rendered = false;
+    amap.on('complete', function () { rendered = true; });
+    setTimeout(function () {
+      if (rendered) return;
+      amap.destroy();
+      amap = null;
+      amapMarkers = [];
+      amapError('高德底图 8 秒内未能渲染完成（key 无效 / 日配额用尽 / 网络受限）。');
+    }, 8000);
+  } catch (e) {
+    amap = null;
+    amapMarkers = [];
+    amapError('高德地图初始化失败：' + ((e && e.message) || e));
   }
-  var pts = anchors.map(px);
-  var ns = 'http://www.w3.org/2000/svg';
-  var svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('style', 'max-height:300px;display:block');
-  if (pts.length > 1) {
-    var line = document.createElementNS(ns, 'line');
-    line.setAttribute('x1', pts[0].x); line.setAttribute('y1', pts[0].y);
-    line.setAttribute('x2', pts[1].x); line.setAttribute('y2', pts[1].y);
-    line.setAttribute('stroke', '#5F5E5A');
-    line.setAttribute('stroke-width', '0.4');
-    line.setAttribute('stroke-dasharray', '1.5 1.5');
-    svg.appendChild(line);
-  }
-  anchors.forEach(function (a, i) {
-    var c = document.createElementNS(ns, 'circle');
-    c.setAttribute('cx', pts[i].x);
-    c.setAttribute('cy', pts[i].y);
-    c.setAttribute('r', '2.2');
-    c.setAttribute('fill', gColor(i));
-    c.setAttribute('stroke', '#fff');
-    c.setAttribute('stroke-width', '0.3');
-    svg.appendChild(c);
-    var t = document.createElementNS(ns, 'text');
-    t.setAttribute('x', pts[i].x);
-    t.setAttribute('y', pts[i].y - 3.4);
-    t.setAttribute('text-anchor', 'middle');
-    t.setAttribute('font-size', '3.2');
-    t.setAttribute('fill', gColor(i));
-    t.textContent = '位置 ' + label(a) + '（' + counts()[i] + ' 张）';
-    svg.appendChild(t);
-  });
-  if (pts.length > 1 && DATA.anchorDistance !== null) {
-    var mid = document.createElementNS(ns, 'text');
-    mid.setAttribute('x', (pts[0].x + pts[1].x) / 2);
-    mid.setAttribute('y', (pts[0].y + pts[1].y) / 2 - 2);
-    mid.setAttribute('text-anchor', 'middle');
-    mid.setAttribute('font-size', '3.2');
-    mid.setAttribute('fill', '#B4B2A9');
-    mid.textContent = DATA.anchorDistance + ' m';
-    svg.appendChild(mid);
-  }
-  host.appendChild(svg);
+}
+
+/** 动态注入高德 JS API：key 从这里拼，模板里不再多一个注入占位符 */
+function loadAmap() {
+  var s = document.createElement('script');
+  s.src = 'https://webapi.amap.com/maps?v=2.0.5&key=' + encodeURIComponent(DATA.amapKey);
+  s.onload = function () { renderAmap(); };
+  s.onerror = function () { amapError('高德 JS API 加载失败（脚本未能下载，通常是网络不通）。'); };
+  document.head.appendChild(s);
 }
 
 function openOverlay(p) {
@@ -807,7 +862,7 @@ document.getElementById('copyBtn').addEventListener('click', function () {
 });
 
 resetByTime();
-renderMap();
+loadAmap();
 </script>
 </body>
 </html>

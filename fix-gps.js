@@ -19,6 +19,9 @@
  *                                                         全部缺 GPS 的照片（非交互，命令即确认）
  *   npm run fix-gps -- 郑州 --review                      生成只读分组审阅页（多锚点文件夹，
  *                                                         页面调整分组后复制一行写入命令）
+ *                                                         第 5 区为高德卫星底图，key 取自
+ *                                                         .env 的 REACT_APP_AMAP_API_KEY，
+ *                                                         缺失即报错退出（附解决步骤）
  *   echo '<分组计划 JSON>' | npm run fix-gps -- 郑州 --plan-stdin        读入审阅页导出的分组计划，打印分组
  *                                                         摘要，一次确认写入全部（--yes 免确认） *
  * 交互键：y 确认 / n 换参照 / s 跳过 / q 退出（单键，无需回车）
@@ -30,7 +33,8 @@
  * 写原片 EXIF，仅从 data 仓读缩略图；启动时两个根都会预检一次。
  * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md、
  * docs/plans/2026-10-03-fix-gps-review-page.md、docs/plans/2026-10-04-fix-gps-merge-unit-test.md、
- * docs/plans/2026-10-04-data-repo-longevity.md
+ * docs/plans/2026-10-04-data-repo-longevity.md、
+ * docs/plans/2026-10-05-fix-gps-review-amap-embed.md
  * 测试：npm run test:cli（node 内置 runner，只测合并/距离两个纯函数，不碰照片）
  */
 
@@ -568,6 +572,82 @@ function mergeAnchors(anchors) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// 审阅页第 5 区：高德底图需要的两样东西（坐标系转换 + JS API key）
+// ---------------------------------------------------------------------------
+
+// 坐标系纪律（与主站 src/Application/cities.js、Map/AMap/LightboxInfoPanel.jsx
+// 同源的既有认知）：EXIF 存的是 WGS84，高德底图是 GCJ02，拿 WGS84 直接落点会
+// 偏移数百米。**存储层永远是 WGS84**——写回 EXIF、plan JSON 的坐标都不许动；
+// 这里算出的 gcj* 只是审阅页第 5 区的显示用派生值。
+const GCJ_A = 6378245.0; // 克拉索夫斯基椭球长半轴（GCJ02 标准参数）
+const GCJ_EE = 0.00669342162296594323; // 第一偏心率平方
+
+// GCJ02 只对中国境内的坐标做非线性偏移，境外原样直通——这是算法的定义域，
+// 不是兜底：境外（如主站的东京/巴黎点位）本就该用 WGS84 落点。
+function outOfChina(lat, lng) {
+  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+
+function gcjDeltaLat(x, y) {
+  let ret =
+    -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
+  ret += ((20 * Math.sin(y * Math.PI) + 40 * Math.sin((y / 3) * Math.PI)) * 2) / 3;
+  ret +=
+    ((160 * Math.sin((y / 12) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30)) * 2) /
+    3;
+  return ret;
+}
+
+function gcjDeltaLng(x, y) {
+  let ret =
+    300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
+  ret += ((20 * Math.sin(x * Math.PI) + 40 * Math.sin((x / 3) * Math.PI)) * 2) / 3;
+  ret +=
+    ((150 * Math.sin((x / 12) * Math.PI) + 300 * Math.sin((x / 30) * Math.PI)) * 2) /
+    3;
+  return ret;
+}
+
+/** WGS84 → GCJ02（业界标准实现，与高德 AMap.convertFrom 偏差约 1 m 级） */
+function wgs84ToGcj02(lat, lng) {
+  if (outOfChina(lat, lng)) return { lat, lng };
+  const dLat = gcjDeltaLat(lng - 105, lat - 35);
+  const dLng = gcjDeltaLng(lng - 105, lat - 35);
+  const radLat = (lat / 180) * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - GCJ_EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  const outLat =
+    lat + (dLat * 180) / (((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic)) * Math.PI);
+  const outLng = lng + (dLng * 180) / ((GCJ_A / sqrtMagic) * Math.cos(radLat) * Math.PI);
+  return { lat: outLat, lng: outLng };
+}
+
+/**
+ * 读仓库根 .env 里的一个变量。只做最朴素的 KEY=VALUE 解析，够用即可：
+ * 不引 dotenv（那是 react-scripts 的传递依赖，CLI 不该依附它），也**不做**
+ * "读不到就找别的来源"的兜底——缺 key 由调用方按 AGENTS.md S3 报错退出。
+ * @returns 变量值；.env 不存在、或文件里没有该变量，都返回 null
+ */
+function readDotenvValue(name) {
+  let text = null;
+  try {
+    text = fsNode.readFileSync(path.join(__dirname, '.env'), 'utf-8');
+  } catch {
+    return null;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m && m[1] === name) {
+      return m[2].replace(/^(['"])(.*)\1$/, '$2') || null;
+    }
+  }
+  return null;
+}
+
 /**
  * 解析审阅页 <img> 用的缩略图 URL：优先既有派生图 _thumb.webp（npm run photos
  * 的产物，形态 B 后在 data 仓）；没有则非 HEIC / 非 mp4 直接用原图（原图仓）；
@@ -665,8 +745,10 @@ async function scanDirForReview(dirName) {
  * 分组审阅页（--review）：扫描文件夹 → 合并同位置锚点 → 注入模板 → 写临时目录 →
  * 打开浏览器。页面纯只读；用户在页面调整分组、复制一行写入命令后，经 --plan-stdin
  * 回到终端写入。
+ * @param amapKey 高德 JS API key（main 的 --review 预检已确保非空），注入页面供
+ *   第 5 区加载卫星底图
  */
-async function runReview(filterDir) {
+async function runReview(filterDir, amapKey) {
   // 先建输出目录（HEIC 无派生缩略图时扫描阶段就要往里写临时 JPEG）
   await fs.mkdir(REVIEW_OUT_DIR, { recursive: true });
   const { photos, anchors: anchorPhotos } = await scanDirForReview(filterDir);
@@ -706,7 +788,13 @@ async function runReview(filterDir) {
     dir: filterDir,
     generatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
     anchorDistance,
-    anchors,
+    amapKey,
+    // 第 5 区的 GCJ02 落点：**只加 gcjLat / gcjLng 两个新字段**，lat / lng 保持
+    // WGS84 原值（写入链路与 plan JSON 都读它们，一旦被覆盖就是坐标污染）
+    anchors: anchors.map((a) => {
+      const gcj = wgs84ToGcj02(a.lat, a.lng);
+      return { ...a, gcjLat: gcj.lat, gcjLng: gcj.lng };
+    }),
     photos,
   };
 
@@ -1122,7 +1210,8 @@ function printUsage() {
   console.log('  npm run fix-gps -- 文件夹 --target a.JPG --ref b.HEIC 手动指定目标与参照（同文件夹）');
   console.log('  npm run fix-gps -- 文件夹 --target a.JPG [--yes]      指定目标，参照自动推荐；--yes 免确认');
   console.log('  npm run fix-gps -- 文件夹 --ref b.HEIC --all          批量：将参照坐标写入该文件夹全部缺 GPS 的照片');
-  console.log('  npm run fix-gps -- 文件夹 --review                    生成只读分组审阅页（多锚点文件夹）');
+  console.log('  npm run fix-gps -- 文件夹 --review                    生成只读分组审阅页（多锚点文件夹；');
+  console.log('                                                        第 5 区为高德卫星底图，需 .env 配 REACT_APP_AMAP_API_KEY）');
   console.log("  echo '<分组计划 JSON>' | npm run fix-gps -- 文件夹 --plan-stdin");
   console.log('                                                        读入审阅页导出的分组计划（页面「复制写入命令」给出完整一行），一次确认写入全部');
 }
@@ -1223,7 +1312,33 @@ async function main() {
       process.exit(1);
     }
     if (args.review) {
-      return runReview(filterDir);
+      // 高德 key 预检（AGENTS.md S3：假设配置在位、预检一次、缺失即报错退出，
+      // 不做兜底）：审阅页第 5 区要嵌卫星底图，key 对 --review 是硬依赖。
+      // 作用域**刻意只限 --review**——交互模式 / --all / --plan-stdin 都不读 key，
+      // 尤其 --plan-stdin 是写入关键路径，绝不能被"看图的附加区块"拖死。
+      const amapKey = readDotenvValue('REACT_APP_AMAP_API_KEY');
+      if (!amapKey) {
+        console.error(
+          color.red(
+            [
+              '❌ --review 需要高德 JS API key：读取 .env 失败',
+              '   （文件不存在，或未配置 REACT_APP_AMAP_API_KEY）。',
+              '',
+              '   解决步骤：',
+              '   1) 仓库根目录：cp .env.example .env',
+              '   2) 高德开放平台控制台 → 应用管理 → 新建应用 → 添加 Key，',
+              '      服务平台选「Web端(JS API)」：https://console.amap.com/dev/key/app',
+              '   3) 填入 .env：REACT_APP_AMAP_API_KEY=<你的 key>',
+              `   4) 重跑：npm run fix-gps -- "${filterDir}" --review`,
+              '',
+              '   注：平台必须是 JS API —— 静态地图/Web 服务类型的 key 不适用',
+              '       （实测返回 USERKEY_PLAT_NOMATCH）。',
+            ].join('\n'),
+          ),
+        );
+        process.exit(1);
+      }
+      return runReview(filterDir, amapKey);
     }
     if (args.planStdin && process.stdin.isTTY) {
       console.error(
@@ -1468,7 +1583,14 @@ if (require.main === module) {
   });
 }
 
-// 最小公共面：只暴露审阅页分组逻辑与它的距离判据常量，供单测导入。
+// 最小公共面：只暴露审阅页分组逻辑、坐标转换与它的距离判据常量，供单测导入。
 // ANCHOR_MERGE_METERS 一并导出，是为了让测试能断言它与 process-photos.js 的
 // 同名常量同值（那边各存一份，只靠注释声明"必须一致"，无机制强制）。
-module.exports = { mergeAnchors, haversineMeters, ANCHOR_MERGE_METERS };
+// wgs84ToGcj02 导出是因为坐标转换错了会静默偏数百米——这是审阅页唯一的
+// "算错也不报错"的环节，必须有控制点单测兜着。
+module.exports = {
+  mergeAnchors,
+  haversineMeters,
+  ANCHOR_MERGE_METERS,
+  wgs84ToGcj02,
+};
