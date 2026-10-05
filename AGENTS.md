@@ -62,8 +62,11 @@ agent 本会话自建的临时文件）。
    - `test/` 是 CLI 脚本（`fix-gps.js` 等）的单测，跑法 `npm run test:cli`
      （node 内置 runner，**不是** CRA jest——`react-scripts test` 的 roots 只有
      `src/`，两者互不干扰）
-2. **CI 验证** → `CI=true ./node_modules/.bin/react-scripts build`；报 EEXIST 删
-   `node_modules/.cache` 重试，别动 `build/`
+2. **CI 验证** → `CI=true npm run build`，由**用户终端或 CI** 执行。agent 环境跑
+   **必失败**，且与 `build/` 是否预先存在**无关**（agent 不必先删 `build/`）：broker
+   对"已存在目录的非递归 mkdir"伪造错误码，webpack 的 mkdirp 认不出 → 上抛
+   （机制与实测见 `docs/toolchain.md`）。副作用：跑 build 会**清空现有 `build/`**，
+   agent 不要在用户工作区试跑
 3. **知识回写** → 新坑/新知识写入 `docs/` 对应域文件（无对应文件按域新建；单文件超
    200 行按域拆分）；**仅当新建域文件时**，本文件"路由"才加一行，知识进既有域文件
    时本文件不动；不预建空文件
@@ -76,7 +79,8 @@ agent 本会话自建的临时文件）。
 - 技术栈：React 18 + react-scripts 5（CRA）、AMap（@uiw/react-amap）、GitHub Pages
 - 构建产物：`src/Application/output.json` 勿手改（由 `npm run photos` 生成）
 - 工具链坑 → `docs/toolchain.md`
-- 照片管线（HEIC 转码、缩略图/展示图档位、删除照片、一致性报告）→ `docs/data-pipeline.md`
+- 照片管线（HEIC 转码、双根 `ORIGIN_DIR`/`IMGS_DIR`、缩略图与展示图档位 AVIF、视频转码）→ `docs/data-pipeline.md`
+- 照片运维（`npm run del-photo` 删除照片、数据一致性报告）→ `docs/photo-ops.md`
 - 照片元数据（GPS 硬拦口径、坐标溯源 `geoSource`、设备 `device` 分类）→ `docs/photo-metadata.md`
 - 拍摄与整理工作流 / 产品定义（手机锚点照、相机主体、标准流程）→ `docs/photo-workflow.md`
 - 应用结构 / demo 分发机制 → `docs/app-structure.md`
