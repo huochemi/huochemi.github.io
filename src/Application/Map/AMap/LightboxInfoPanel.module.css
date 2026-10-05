@@ -111,6 +111,42 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* 延伸阅读：点位级外部参考链接（docs/plans/2026-10-05-point-references.md）。
+   整行即链接（含类别标签），故用 flex 让标签与标题在同一行内基线对齐 */
+.refLink {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #60a5fa;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.refLink:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+/* 类别标签：数据 / 航图 / 文章；未收录的 kind 原样显示 */
+.refKind {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 0.5px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 链接标题：长标题允许折行，不撑破面板 */
+.refLabel {
+  word-break: break-word;
+}
+
 /* 封面标记：封面不可删除（删除会让整组失去坐标与缩略图来源） */
 .coverBadge {
   display: inline-block;

@@ -614,6 +614,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             photo={currentPhoto}
             groupName={selectedGroup?.dirName}
             groupDescription={selectedGroup?.description}
+            groupReferences={selectedGroup?.references}
             isCover={currentPhoto.fileName === coverFileName}
             open={infoOpen}
           />

@@ -12,6 +12,14 @@ const formatCoord = (v) => (typeof v === 'number' ? v.toFixed(6) : '');
 // 高德 URI API 要求 GCJ02 坐标，直接用 WGS84 拼链接会偏移数百米
 const gcjCache = new Map();
 
+// 外部参考链接的类别标签（点位级，见 docs/plans/2026-10-05-point-references.md）。
+// 只决定显示文字：未收录的 kind 原样显示，不做猜测也不隐藏——坏数据要看得见。
+const REF_KIND_LABELS = {
+  data: '数据',
+  chart: '航图',
+  article: '文章',
+};
+
 /**
  * Lightbox 右侧信息面板（方案 B，docs/plans/2026-09-27-lightbox-info-panel.md）
  *
@@ -19,6 +27,7 @@ const gcjCache = new Map();
  * @param {object} photo - 当前照片（lat/lng/takenAt，WGS84）
  * @param {string} groupName - 所属文件夹名（dirName）
  * @param {string} groupDescription - 文件夹描述（仅文件夹分组模式有）
+ * @param {Array} groupReferences - 点位级外部参考链接（可选字段，缺省即该点位无链接）
  * @param {boolean} isCover - 是否为所属文件夹的封面（封面不可删除）
  * @param {boolean} open - 面板展开态（父组件的 "ⓘ" 按钮控制）
  */
@@ -27,6 +36,7 @@ function LightboxInfoPanel({
   photo,
   groupName,
   groupDescription,
+  groupReferences,
   isCover,
   open,
 }) {
@@ -171,6 +181,29 @@ function LightboxInfoPanel({
           {groupDescription && (
             <div className={styles.desc}>{groupDescription}</div>
           )}
+        </div>
+      )}
+
+      {/* 延伸阅读：点位级外部参考链接（docs/plans/2026-10-05-point-references.md）。
+          刻意不校验、不过滤——缺 label 就是空标题、缺 url 就是坏链接，肉眼可见才会被修；
+          静默跳过坏数据反而藏住笔误。无 references 时整个区块不渲染（不留空壳）。 */}
+      {groupReferences?.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.label}>延伸阅读</div>
+          {groupReferences.map((ref, index) => (
+            <a
+              key={`${index}-${ref.url}`}
+              className={styles.refLink}
+              href={ref.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className={styles.refKind}>
+                {REF_KIND_LABELS[ref.kind] ?? ref.kind}
+              </span>
+              <span className={styles.refLabel}>{ref.label}</span>
+            </a>
+          ))}
         </div>
       )}
 

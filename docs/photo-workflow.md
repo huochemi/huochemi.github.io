@@ -114,6 +114,27 @@
    `photos`。封面必须在原图仓中存在——脚本只校验存在性、**不校验 GPS**，
    判定权唯独属于 `npm run photos` 的预检。已有 `index.json` 时硬拦不覆盖。详见
    `plans/2026-10-05-new-place-scaffold.md`）
+
+   **可选第三个字段 `references`（2026-10-05 新增）**：给点位挂外部参考链接，显示在
+   照片详情面板的「延伸阅读」区块。它是**纯展示字段**——预检不校验它，缺省即"该点位
+   没有外部链接"，故既有 `index.json` 无需回填：
+
+   ```json
+   {
+     "index_photo": "IMG_4657.HEIC",
+     "description": "北京市-大兴机场",
+     "references": [
+       { "kind": "data",    "label": "X-Plane 场景包（Scenery Gateway）", "url": "https://gateway.x-plane.com/airports/ZBAD/show" },
+       { "kind": "chart",   "label": "大兴机场航图（CAAC）",              "url": "https://yinlei.org/x-plane10/web/doc/ZBAD.pdf" },
+       { "kind": "article", "label": "大兴机场航图笔记（2019）",          "url": "https://yinlei.org/x-plane10/2019/09/zbad.html" }
+     ]
+   }
+   ```
+
+   `kind` 取 `data`/`chart`/`article`（只决定标签文字，其它值原样显示）。**只放链接、
+   不搬运正文**——外部内容一律让读者点开原站看。改完同样要重跑 `npm run photos`，
+   由管线透传进 `output.json`（`output.json` 是构建期打包进 bundle 的，不是运行时读取
+   外部文件）。见 `plans/2026-10-05-point-references.md`
 4. `npm run photos`：生成派生图 + `src/Application/output.json`
 5. 三个仓库（原图仓 `photos-originals` / data / 本站点）分别提交
 

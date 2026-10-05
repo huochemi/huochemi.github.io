@@ -815,6 +815,23 @@
     "dirName": "北京市-大兴机场",
     "description": "北京市-大兴机场",
     "takenAt": "2026-07-27T12:14:27",
+    "references": [
+      {
+        "kind": "data",
+        "label": "X-Plane 场景包（Scenery Gateway）",
+        "url": "https://gateway.x-plane.com/airports/ZBAD/show"
+      },
+      {
+        "kind": "chart",
+        "label": "大兴机场航图（CAAC）",
+        "url": "https://yinlei.org/x-plane10/web/doc/ZBAD.pdf"
+      },
+      {
+        "kind": "article",
+        "label": "大兴机场航图笔记（2019）",
+        "url": "https://yinlei.org/x-plane10/2019/09/zbad.html"
+      }
+    ],
     "photos": [
       {
         "fileName": "DSC03722.JPG",

@@ -1057,6 +1057,14 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
     // 相邻的 takenAt 保留条件展开：那是 EXIF 真实可缺的字段，不属本契约。
     description: indexConfig.description,
     ...(cover.takenAt ? { takenAt: cover.takenAt } : {}),
+    // references 是**纯展示**字段（用户 2026-10-05 拍板定为"可选"）：缺省即"该点位没有
+    // 外部参考链接"，语义完整、无歧义。它不参与预检判定——"没写链接"绝不该让整组照片被
+    // 跳过，故此处只做条件展开透传：不设默认值、不校验、不排序去重（坏数据在前端显式可见，
+    // 不静默过滤）。与上面 description 的无条件写相对：那是判定项（缺即该点位跳过）。
+    // 见 docs/plans/2026-10-05-point-references.md
+    ...(Array.isArray(indexConfig.references)
+      ? { references: indexConfig.references }
+      : {}),
     photos: photos,
   };
 }
