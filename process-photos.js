@@ -66,12 +66,14 @@ const VIDEO_AUDIO_BITRATE = '128k';
 
 // 展示图配置：1920px 宽（网页 Lightbox 全屏展示足够），
 // 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化。
-// 2026-10-05 起编码格式由 WebP 换为 AVIF：同视觉质量下体积约再降一半
-// （本机实测 1920px 合成图 WebP q75 = 800 KB vs AVIF q60 = 441 KB，真实照片
-// 通常更好）。坑：`sharp.format.avif` 是 undefined 属**正常**——AVIF 归在
+// 2026-10-05 起编码格式由 WebP 换为 AVIF、档位 q50（用户拍板）：真实照片
+// **全量**实测 WebP q75 44.6 MB → AVIF q60 38.9 MB（-12.8%）→ AVIF q50
+// 26.7 MB（-40.1%）。注意 q60→q70 反而比 WebP q75 更大——两格式质量刻度
+// 不同名同值，跨格式比体积必须实测（合成图数据不可外推）。
+// 坑：`sharp.format.avif` 是 undefined 属**正常**——AVIF 归在
 // `sharp.format.heif` 下（alias: ["avif"]），`.avif()` 方法照常可用，别被误导。
 const DISPLAY_SIZE = 1920;
-const DISPLAY_QUALITY = 60;
+const DISPLAY_QUALITY = 50;
 
 // 拍摄设备分类：把 EXIF 的 Make / Model 归一为「手机 / 相机」两类枚举。
 // 只存语义、不存品牌名也不存 emoji——前端角标空间有限（只放图标），
