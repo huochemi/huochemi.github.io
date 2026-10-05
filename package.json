@@ -35,6 +35,7 @@
     "eject": "react-scripts eject",
     "report": "react-scripts test --ci --coverage --watchAll=false && npx codecov -F unittests",
     "photos": "node process-photos.js",
+    "new-place": "node new-place.js",
     "del-photo": "node delete-photo.js",
     "fix-gps": "node fix-gps.js"
   },

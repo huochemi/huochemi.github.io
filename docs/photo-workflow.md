@@ -107,7 +107,12 @@
    `--review`，并附摘要（如"5 张锚点落在 2 处、最远相距 114 m"，判据同 5 米）。
    计划文档：`docs/plans/2026-10-03-fix-gps-review-page.md`、
    `docs/plans/2026-10-04-fix-gps-cleanup-and-anchor-merge.md`
-3. 维护 `index.json`（`index_photo` 指定封面、可选 `description`）
+3. 维护 `index.json`（**两个字段均必填**：`index_photo` 指定封面、`description`
+   展示名，可为空串 `""`）。新建点位可用脚手架一次建好 data 侧目录与 `index.json`：
+   `npm run new-place -- "<地点>" --cover "<封面文件名>" [--desc "<展示名>"]`
+   （不传 `--desc` 写空串；封面必须在原图仓中存在——脚本只校验存在性、**不校验 GPS**，
+   判定权唯独属于 `npm run photos` 的预检。已有 `index.json` 时硬拦不覆盖。详见
+   `plans/2026-10-05-new-place-scaffold.md`）
 4. `npm run photos`：生成派生图 + `src/Application/output.json`
 5. 三个仓库（原图仓 `photos-originals` / data / 本站点）分别提交
 

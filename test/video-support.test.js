@@ -24,7 +24,12 @@ const {
 } = require('../process-photos');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const CLI_FILES = ['process-photos.js', 'fix-gps.js', 'delete-photo.js'];
+const CLI_FILES = [
+  'process-photos.js',
+  'fix-gps.js',
+  'delete-photo.js',
+  'new-place.js',
+];
 
 const readSource = (file) =>
   fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
@@ -102,11 +107,12 @@ test('ALLOWED_EXTS：图片四格式 + mp4', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 跨文件契约：三个 CLI 的派生后缀 / 媒体格式口径必须一致
+// 跨文件契约：四个 CLI 的派生后缀 / 媒体格式口径必须一致
 //
-// 三个脚本各自独立（不抽共享模块），口径漂移的后果：fix-gps 会把转码版
+// 四个脚本各自独立（不抽共享模块），口径漂移的后果：fix-gps 会把转码版
 // 当原片扫进去（坐标写进 _web.mp4）、delete-photo 的"删后为空"会把派生
-// 文件算进剩余媒体数。用测试锁死，改任何一处不同步都会在这里爆。
+// 文件算进剩余媒体数、new-place 会把派生文件当成候选封面。用测试锁死，
+// 改任何一处不同步都会在这里爆。
 // ---------------------------------------------------------------------------
 
 /**
@@ -131,7 +137,7 @@ function resolveSuffixesFromSource(source, label) {
     .map((entry) => (entry.startsWith('_') ? entry : stringConst(entry)));
 }
 
-test('契约：三个 CLI 的 DERIVED_SUFFIXES 完全一致', () => {
+test('契约：四个 CLI 的 DERIVED_SUFFIXES 完全一致', () => {
   for (const file of CLI_FILES) {
     const suffixes = resolveSuffixesFromSource(readSource(file), file);
     assert.deepEqual(
@@ -145,7 +151,7 @@ test('契约：三个 CLI 的 DERIVED_SUFFIXES 完全一致', () => {
   assert.deepEqual(DERIVED_SUFFIXES, ['_thumb.webp', '_display.avif', '_web.mp4']);
 });
 
-test('契约：三个 CLI 的 ALLOWED_EXTS 都已包含 .mp4', () => {
+test('契约：四个 CLI 的 ALLOWED_EXTS 都已包含 .mp4', () => {
   for (const file of CLI_FILES) {
     const match = readSource(file).match(
       /const\s+ALLOWED_EXTS\s*=\s*new Set\(\[([^\]]+)\]\)/,

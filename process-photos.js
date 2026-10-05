@@ -716,6 +716,21 @@ async function preflightDir(dirName) {
       };
     }
 
+    // description 是必填契约（用户 2026-10-05 拍板）：不接受"字段可缺失"的兼容态，
+    // 缺字段即该点位跳过。要求的是"key 恒存在"而非"必须有内容"，故空串合法。
+    // hint 必须自足（用户 2026-10-05 要求）：给出改哪个文件、加什么内容，照做即可跑通。
+    // 见 docs/plans/2026-10-05-new-place-scaffold.md
+    if (typeof indexConfig.description !== 'string') {
+      return {
+        dirName,
+        reason: 'index.json 缺少 "description"（或它不是字符串）',
+        hint:
+          '修正后重跑：npm run photos\n' +
+          `    做法：编辑 ${path.join(dirPath, 'index.json')}，` +
+          '补上 "description"（可填空串 ""，也可填展示名）',
+      };
+    }
+
     // 过滤出媒体文件（图片 + 视频原片；剔除全部派生文件）——取自原图仓
     let files;
     try {
@@ -947,7 +962,11 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         }),
     fileName: coverFileName,
     dirName: dirName,
-    ...(indexConfig.description ? { description: indexConfig.description } : {}),
+    // 预检已保证 description 是字符串（缺失即该点位跳过），故无条件写。
+    // 不再保留"字段可缺失"的条件展开——那是一种隐性兼容分支（用户 2026-10-05
+    // 拍板，见 docs/plans/2026-10-05-new-place-scaffold.md）。
+    // 相邻的 takenAt 保留条件展开：那是 EXIF 真实可缺的字段，不属本契约。
+    description: indexConfig.description,
     ...(cover.takenAt ? { takenAt: cover.takenAt } : {}),
     photos: photos,
   };
