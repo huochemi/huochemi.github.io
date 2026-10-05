@@ -35,7 +35,6 @@ function flattenPhotos(data) {
           fileName: group.fileName,
           thumbnailLink: group.thumbnailLink,
           displayLink: group.displayLink,
-          webViewLink: group.webViewLink,
           // 视频字段（type/videoLink/duration）：封面是视频时组对象自带，
           // 照片项为 undefined。漏透传是历史踩过的坑（displayLink 曾因此退化）
           type: group.type,
@@ -69,7 +68,6 @@ function flattenPhotos(data) {
           fileName: photo.fileName,
           thumbnailLink: photo.thumbnailLink,
           displayLink: photo.displayLink,
-          webViewLink: photo.webViewLink,
           // 视频字段：type === 'video' 时 Lightbox 渲染 <video>（缺省即照片）
           type: photo.type,
           videoLink: photo.videoLink,
@@ -304,9 +302,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       const targetUrl =
         targetPhoto?.type === 'video'
           ? targetPhoto?.thumbnailLink
-          : targetPhoto?.displayLink ||
-            targetPhoto?.webViewLink ||
-            targetPhoto?.thumbnailLink;
+          : targetPhoto?.displayLink || targetPhoto?.thumbnailLink;
       if (targetUrl) {
         const img = new Image();
         img.src = targetUrl;
@@ -482,16 +478,6 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
               {lightboxIndex + 1} / {photoList.length}
             </div>
             <div className={styles.lightboxActions}>
-              {currentPhoto.webViewLink && (
-                <a
-                  href={currentPhoto.webViewLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={styles.lightboxLink}
-                >
-                  查看原始文件 ↗
-                </a>
-              )}
               <button
                 type="button"
                 className={`${styles.lightboxInfoBtn} ${
@@ -569,17 +555,13 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                     className={`${styles.lightboxImage} ${styles.lightboxPlaceholder}`}
                   />
 
-                  {/* 真正的高清展示图（1920px WebP 展示档，原图仅作下载入口） */}
+                  {/* 真正的高清展示图（1920px 展示档，原图不入库、无下载入口） */}
                   <img
                     key={
-                      currentPhoto.displayLink ||
-                      currentPhoto.webViewLink ||
-                      currentPhoto.thumbnailLink
+                      currentPhoto.displayLink || currentPhoto.thumbnailLink
                     }
                     src={
-                      currentPhoto.displayLink ||
-                      currentPhoto.webViewLink ||
-                      currentPhoto.thumbnailLink
+                      currentPhoto.displayLink || currentPhoto.thumbnailLink
                     }
                     alt={`large-photo-${lightboxIndex}`}
                     className={`${styles.lightboxImage} ${

@@ -25,8 +25,12 @@
  * 中断后重跑可续作：已写入 GPS 的照片不会再出现在清单里。
  * 注：npm run photos 预检失败提示在"恰有 1 张带坐标照片"时会给出 --all 批量命令，
  * "≥2 张锚点"时会给出 --review 审阅页命令。
+ * 双根（形态 B，2026-10-05 起）：原片在原图仓 `../photos-originals/photos`，
+ * 派生图（含审阅页用的 `_thumb.webp`）在 data 仓 `../data/photos`。本工具读原片、
+ * 写原片 EXIF，仅从 data 仓读缩略图；启动时两个根都会预检一次。
  * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md、
- * docs/plans/2026-10-03-fix-gps-review-page.md、docs/plans/2026-10-04-fix-gps-merge-unit-test.md
+ * docs/plans/2026-10-03-fix-gps-review-page.md、docs/plans/2026-10-04-fix-gps-merge-unit-test.md、
+ * docs/plans/2026-10-04-data-repo-longevity.md
  * 测试：npm run test:cli（node 内置 runner，只测合并/距离两个纯函数，不碰照片）
  */
 
@@ -42,13 +46,18 @@ const exifr = require('exifr');
 
 const execFileAsync = promisify(execFile);
 
+// 双根（形态 B，2026-10-05 起）：**原图**（真相源）在原图仓，**派生图**（可再生）
+// 在 data 仓。本工具只对原片做读写（EXIF 回写写在原片），审阅页缩略图优先取
+// data 仓的 `_thumb.webp`。三个 CLI 各存一份同值副本（刻意不抽共享模块），
+// 有跨文件测试锁定一致。详见 docs/plans/2026-10-04-data-repo-longevity.md
+const ORIGIN_DIR = path.join(__dirname, '../photos-originals/photos');
 const IMGS_DIR = path.join(__dirname, '../data/photos');
 // 可处理媒体：图片 + 视频（mp4）。视频与照片同口径——缺坐标的视频同样进
 // 待修复清单，fix-gps 的 tagsfromfile 写入命令对 mp4 原样可用（实测）
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
 // 派生文件名后缀（与 process-photos.js 的口径同值副本，改需同步；
 // 跨文件测试锁定一致——坐标只写原片，派生文件永不进扫描）
-const DERIVED_SUFFIXES = ['_thumb.webp', '_display.webp', '_web.mp4'];
+const DERIVED_SUFFIXES = ['_thumb.webp', '_display.avif', '_web.mp4'];
 const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
 // 视频判定：exifr 读不了 mp4，坐标/时间的读取通道按它分叉到 exiftool
 const isVideoFile = (file) => path.extname(file).toLowerCase() === '.mp4';
@@ -189,9 +198,9 @@ async function readGps(filePath) {
   return null;
 }
 
-/** 扫描照片目录，返回待修复清单与按文件夹分组的参照池 */
+/** 扫描原图仓，返回待修复清单与按文件夹分组的参照池（原片只读，坐标才写回） */
 async function scan() {
-  const entries = await fs.readdir(IMGS_DIR, { withFileTypes: true });
+  const entries = await fs.readdir(ORIGIN_DIR, { withFileTypes: true });
   const subDirs = entries
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
@@ -201,7 +210,7 @@ async function scan() {
   const refsByDir = new Map();
 
   for (const dirName of subDirs) {
-    const dirPath = path.join(IMGS_DIR, dirName);
+    const dirPath = path.join(ORIGIN_DIR, dirName);
     const files = (await fs.readdir(dirPath)).filter(
       (file) =>
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
@@ -561,21 +570,21 @@ function mergeAnchors(anchors) {
 
 /**
  * 解析审阅页 <img> 用的缩略图 URL：优先既有派生图 _thumb.webp（npm run photos
- * 的产物）；没有则非 HEIC / 非 mp4 直接用原图；HEIC 浏览器渲染不了且无派生图 →
- * sips 转临时 JPEG；mp4 不能进 <img> → ffmpeg 抽第 2 秒一帧出临时 JPEG（与
- * 交互预览 Preview 同款做法；转出的文件留在 REVIEW_OUT_DIR 供页面持续引用，
- * 不随脚本退出清理）。
+ * 的产物，形态 B 后在 data 仓）；没有则非 HEIC / 非 mp4 直接用原图（原图仓）；
+ * HEIC 浏览器渲染不了且无派生图 → sips 转临时 JPEG；mp4 不能进 <img> →
+ * ffmpeg 抽第 2 秒一帧出临时 JPEG（与交互预览 Preview 同款做法；转出的文件
+ * 留在 REVIEW_OUT_DIR 供页面持续引用，不随脚本退出清理）。
  */
-async function resolveThumbSrc(dirPath, fileName) {
+async function resolveThumbSrc(originDirPath, dataDirPath, fileName) {
   const stem = path.parse(fileName).name;
-  const thumbPath = path.join(dirPath, `${stem}_thumb.webp`);
+  const thumbPath = path.join(dataDirPath, `${stem}_thumb.webp`);
   try {
     await fs.access(thumbPath);
     return pathToFileURL(thumbPath).href;
   } catch {
-    // 无派生缩略图
+    // 无派生缩略图（派生图尚未生成，或该点位还没跑过 npm run photos）
   }
-  const src = path.join(dirPath, fileName);
+  const src = path.join(originDirPath, fileName);
   if (isVideoFile(fileName)) {
     await ensureFfmpeg();
     const tmpJpeg = path.join(REVIEW_OUT_DIR, `${stem}_review.jpg`);
@@ -606,8 +615,9 @@ async function resolveThumbSrc(dirPath, fileName) {
 
 /** 扫描单个文件夹，返回审阅页需要的媒体元数据（只读）。照片走 exifr，视频走 exiftool */
 async function scanDirForReview(dirName) {
-  const dirPath = path.join(IMGS_DIR, dirName);
-  const files = (await fs.readdir(dirPath)).filter(
+  const originDirPath = path.join(ORIGIN_DIR, dirName); // 媒体与 EXIF 来源
+  const dataDirPath = path.join(IMGS_DIR, dirName); // 派生缩略图来源
+  const files = (await fs.readdir(originDirPath)).filter(
     (file) =>
       ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
       !isDerivedFile(file),
@@ -615,7 +625,7 @@ async function scanDirForReview(dirName) {
 
   const photos = [];
   for (const file of files) {
-    const filePath = path.join(dirPath, file);
+    const filePath = path.join(originDirPath, file);
     let lat;
     let lng;
     let time;
@@ -643,7 +653,7 @@ async function scanDirForReview(dirName) {
       lat: lat ?? null,
       lng: lng ?? null,
       geoSource: parseGeoSource(geoSourceRaw) ?? null,
-      thumb: await resolveThumbSrc(dirPath, file),
+      thumb: await resolveThumbSrc(originDirPath, dataDirPath, file),
     });
   }
 
@@ -807,7 +817,7 @@ async function runPlan(rawPlan, filterDir, yes) {
     throw new Error('计划 groups 为空（至少需要一组参照 → 目标）');
   }
 
-  const dirPath = path.join(IMGS_DIR, filterDir);
+  const dirPath = path.join(ORIGIN_DIR, filterDir);
   const seenTargets = new Map();
   const resolved = [];
 
@@ -1164,7 +1174,28 @@ async function main() {
   const filterDir = args.dir;
 
   console.log(color.cyan('=== fix-gps：交互式补 GPS 坐标工具 ==='));
-  console.log(`照片根目录: ${IMGS_DIR}`);
+  console.log(`原图根目录（读 / 写 EXIF）: ${ORIGIN_DIR}`);
+  console.log(`派生图根目录（只读缩略图）: ${IMGS_DIR}`);
+
+  // 双根预检（AGENTS.md S3：只预检一次，缺失即报错退出，不做多路兜底）：
+  // 坐标写回原片，故原图仓是硬依赖；派生图仓用于审阅页缩略图，同样必须在位
+  for (const [label, dir] of [
+    ['原图根目录', ORIGIN_DIR],
+    ['派生图根目录', IMGS_DIR],
+  ]) {
+    const stat = await fs.stat(dir).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      console.error(
+        color.red(
+          `❌ ${label}不存在：${dir}\n` +
+            (label === '原图根目录'
+              ? '请先建立原图仓并放入原图（见 docs/plans/2026-10-04-data-repo-longevity.md 阶段 1）'
+              : '请检查 ../data 仓库是否完整'),
+        ),
+      );
+      process.exit(1);
+    }
+  }
 
   // exiftool 预检：假设命令已安装，缺失直接报错退出
   try {
@@ -1179,7 +1210,7 @@ async function main() {
   // 审阅页 / 计划模式：只面向单个文件夹，直接做目录预检，跳过全量扫描
   // （--review / --plan-stdin 自带校验链，不需要 missing / refs 池）
   if (args.review || args.planStdin) {
-    const subDirs = (await fs.readdir(IMGS_DIR, { withFileTypes: true }))
+    const subDirs = (await fs.readdir(ORIGIN_DIR, { withFileTypes: true }))
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
       .sort();

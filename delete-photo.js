@@ -14,10 +14,15 @@
  *   2. 目标是所属文件夹 index.json 的封面 → 报错退出（封面不可删除：它提供该分组
  *      的坐标与缩略图来源，需人工改 index_photo 指定新封面后再删）
  *   3. 删除后该文件夹不再有原媒体 → 报错退出（管线要求每组至少 1 张）
- *   4. 删除原媒体与派生文件（照片：<名>_thumb.webp / <名>_display.webp；
+ *   4. 删除原媒体与派生文件（照片：<名>_thumb.webp / <名>_display.avif；
  *      视频：<名>_thumb.webp / <名>_web.mp4。缺失的直接跳过）
  *   5. 打印一行提示：output.json **尚未更新**，需自行执行 npm run photos
  *      （刻意不自动重跑：连删多张时不必为每张付一次全量重跑的等待，v4）
+ *
+ * 双根（形态 B，2026-10-05 起）：原片在原图仓 `../photos-originals/photos`、
+ * 派生图与 index.json 在 data 仓 `../data/photos`。删除时按文件归属分别定位：
+ * 原片删原图仓、派生文件删 data 仓（两边都缺失则跳过），因此两个根都要有该
+ * 点位目录——缺一即报错退出（不静默删一半）。
  *
  * 依赖：仅 Node 内置模块 fs / path（无外部命令，无子进程，无启动预检）
  */
@@ -25,13 +30,14 @@
 const fs = require('fs/promises');
 const path = require('path');
 
+const ORIGIN_DIR = path.join(__dirname, '../photos-originals/photos');
 const IMGS_DIR = path.join(__dirname, '../data/photos');
 
 // 与 process-photos.js 保持一致的媒体判定（改一处必须改两处）：
 // 图片 + 视频（mp4）。删视频时待删清单是 原片 + 缩略图 + 转码版
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
 const THUMB_SUFFIX = '_thumb.webp';
-const DISPLAY_SUFFIX = '_display.webp';
+const DISPLAY_SUFFIX = '_display.avif';
 const WEB_VIDEO_SUFFIX = '_web.mp4';
 // 派生文件后缀（与 process-photos.js 的口径同值副本，改需同步；
 // 跨文件测试锁定一致——"删后为空"判定必须排除它们）
@@ -92,20 +98,29 @@ async function exists(targetPath) {
 }
 
 async function deletePhoto(dirName, fileName) {
-  const dirPath = path.join(IMGS_DIR, dirName);
-  const dirStat = await fs.stat(dirPath).catch(() => null);
-  if (!dirStat || !dirStat.isDirectory()) {
-    throw new Error(`文件夹不存在：${dirPath}`);
+  const dataDirPath = path.join(IMGS_DIR, dirName); // index.json + 派生图
+  const originDirPath = path.join(ORIGIN_DIR, dirName); // 原媒体
+
+  // 双根目录校验：删除会同时落在两个仓库，任一侧缺目录都可能是搬家漏拷，
+  // 一律报错退出而不是"删一半"
+  for (const [label, target] of [
+    ['原图仓', originDirPath],
+    ['data 仓', dataDirPath],
+  ]) {
+    const stat = await fs.stat(target).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new Error(`${label}中不存在文件夹：${target}`);
+    }
   }
 
-  const filePath = path.join(dirPath, fileName);
+  const filePath = path.join(originDirPath, fileName);
   const fileStat = await fs.stat(filePath).catch(() => null);
   if (!fileStat || !fileStat.isFile()) {
-    throw new Error(`文件不存在：${dirName}/${fileName}`);
+    throw new Error(`原图仓中不存在文件：${dirName}/${fileName}`);
   }
 
   // 封面校验：封面不可删除，必须由人先改 index.json
-  const indexPath = path.join(dirPath, 'index.json');
+  const indexPath = path.join(dataDirPath, 'index.json');
   let indexConfig;
   try {
     indexConfig = JSON.parse(await fs.readFile(indexPath, 'utf-8'));
@@ -126,8 +141,9 @@ async function deletePhoto(dirName, fileName) {
     );
   }
 
-  // 删后为空校验：与 process-photos.js 的媒体过滤保持一致（排除全部派生文件）
-  const files = await fs.readdir(dirPath);
+  // 删后为空校验：与 process-photos.js 的媒体过滤保持一致（排除全部派生文件）。
+  // 原媒体已全部在原图仓，故清单取自 originDirPath
+  const files = await fs.readdir(originDirPath);
   const mediaFiles = files.filter(
     (file) =>
       ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
@@ -143,20 +159,40 @@ async function deletePhoto(dirName, fileName) {
     );
   }
 
-  // 待删清单：原媒体 + 派生文件（派生文件缺失则跳过，不报错）。
+  // 待删清单：原媒体（原图仓）+ 派生文件（data 仓）。派生文件缺失则跳过，不报错。
   // 照片派生 = 缩略图 + 展示图；视频派生 = 缩略图 + 转码版（_web.mp4）
   const { name: stem } = path.parse(fileName);
   const isVideo = path.extname(fileName).toLowerCase() === '.mp4';
   const candidates = [
-    { fileName, kind: isVideo ? '视频原片' : '原图' },
-    { fileName: `${stem}${THUMB_SUFFIX}`, kind: '缩略图' },
+    {
+      fileName,
+      kind: isVideo ? '视频原片' : '原图',
+      root: originDirPath,
+      rootLabel: '原图仓',
+    },
+    {
+      fileName: `${stem}${THUMB_SUFFIX}`,
+      kind: '缩略图',
+      root: dataDirPath,
+      rootLabel: 'data 仓',
+    },
     isVideo
-      ? { fileName: `${stem}${WEB_VIDEO_SUFFIX}`, kind: '转码视频' }
-      : { fileName: `${stem}${DISPLAY_SUFFIX}`, kind: '展示图' },
+      ? {
+          fileName: `${stem}${WEB_VIDEO_SUFFIX}`,
+          kind: '转码视频',
+          root: dataDirPath,
+          rootLabel: 'data 仓',
+        }
+      : {
+          fileName: `${stem}${DISPLAY_SUFFIX}`,
+          kind: '展示图',
+          root: dataDirPath,
+          rootLabel: 'data 仓',
+        },
   ];
   const targets = [];
   for (const candidate of candidates) {
-    const targetPath = path.join(dirPath, candidate.fileName);
+    const targetPath = path.join(candidate.root, candidate.fileName);
     if (await exists(targetPath)) {
       targets.push({ ...candidate, targetPath });
     }
@@ -168,7 +204,9 @@ async function deletePhoto(dirName, fileName) {
   console.log(`该文件夹剩余媒体文件：${remaining.length} 个（删除后）`);
   console.log('将删除以下文件（直接删除，不进回收站）：');
   for (const target of targets) {
-    console.log(`  - ${target.kind}：${dirName}/${target.fileName}`);
+    console.log(
+      `  - ${target.kind}（${target.rootLabel}）：${dirName}/${target.fileName}`,
+    );
   }
 
   for (const target of targets) {
@@ -190,7 +228,8 @@ async function deletePhoto(dirName, fileName) {
 function printReminder() {
   console.log(
     color.yellow(
-      '\n⚠️ output.json 尚未更新 —— 请执行 npm run photos，再提交 ../data 与本站点两个仓库',
+      '\n⚠️ output.json 尚未更新 —— 请执行 npm run photos，再提交三个仓库：' +
+        '../photos-originals（原图仓）、../data（派生图）、本站点（output.json）',
     ),
   );
 }

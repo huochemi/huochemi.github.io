@@ -71,12 +71,37 @@ webpack 缓存问题。**"删 `node_modules/.cache` 可修"是假相关（当晚
   `sandbox.enabled` 未设置（默认 false，沙箱本来就没开），拦截来自
   文件权限规则层（settings.json 的 orderedRules + 内置安全检查）
 
+**2026-10-05 复核——推翻上一条"`build/` 不存在时 agent 可自行跑"的旧结论：**
+
+三路实测（node v22.22.2，当前 broker 规则）：
+
+| 形式 | 目标目录 | 结果 |
+| --- | --- | --- |
+| `CI=true npm run build` | `build/` 已存在 | ❌ 同一 `EEXIST ... mkdir build` |
+| `CI=true BUILD_PATH=.build-verify npm run build` | **全新**目录 | ❌ 同样失败 |
+| 探针 `fs.mkdirSync('<不存在目录>')` | 不存在 | ✅ 成功 |
+
+第三路尤其关键：**目标目录全新也失败**，且失败时该目录已被 CRA 写入 `public/`
+拷贝（`favicon.ico` / `logo192.png` / `manifest.json` …）。机制是 CRA 构建**先**
+创建输出目录（`emptyDirSync`，内部递归 mkdir → 被放行），**随后** webpack 5 的
+`mkdirp` 对该**已存在**目录再做一次非递归 mkdir → 撞上 broker 拦截。所以失败与
+`build/` 是否预先存在**无关**。
+
+命令形式也**无关**：`npm run build` 的展开就是 `react-scripts build`（B 路输出首行
+`> react-scripts build` 可证），与 `./node_modules/.bin/react-scripts build` 是同一
+二进制、同一失败点。
+
 结论与处理：
 
-- `build/` 已存在时，agent 环境跑 CI build 必失败。不是项目 bug
-  （S2：触发条件不在用户真实使用路径，用户终端永不触发）
-- 门禁操作：`build/` 已存在时，CI build 门禁交由用户在终端执行；
-  `build/` 不存在时 agent 可自行跑（mkdir 会被放行）
+- **agent 环境跑 CI build 必失败**，与 `build/` 是否预先存在、与命令形式均无关。
+  不是项目 bug（S2：触发条件不在用户真实使用路径，用户终端永不触发）
+- 门禁操作：CI build **一律交用户终端或 CI 执行**；agent 不必再尝试，也**不必**
+  先删 `build/`（删了同样失败——CRA 会先把目录建回来）
+- 命令形式取 `CI=true npm run build` 即可（合"npm run 语义化"惯例；用户终端下
+  两种写法完全等价）
+- ⚠️ **副作用**：agent 一旦执行 build（任一形式），CRA 的"建前清空"会**清空现有
+  `build/`**（2026-10-05 实测：原 2026-09-29 的完整产物被清成只剩 public 拷贝）。
+  故 agent 不要在用户工作区随手试跑 build
 - AGENTS.md 流程 2 的"报 EEXIST 删 node_modules/.cache 重试"按 E1
   走修订流程更正
 
@@ -114,3 +139,33 @@ webpack 缓存问题。**"删 `node_modules/.cache` 可修"是假相关（当晚
 但 SSR 或测试环境（无 `window`/`localStorage`）会直接崩。
 
 - 注意：改动相关逻辑时保持惰性求值或加环境守卫
+
+## git 路径含中文时被加引号 → 所有"后缀 `$` 匹配"静默失效（2026-10-05 实测）
+
+`git ls-files` / `git ls-tree` 对**含非 ASCII 字符的路径会加双引号并转义**
+（如 `"photos/\345\215\227..."`）。后果是任何形如 `grep '\.webp$'` 的**后缀锚定**
+都匹配不上，且**不报错、只是结果为空或 0** —— 属于最危险的一类坑：假通过 / 静默归零。
+
+本 repo 的 `../data` 全部路径都是中文点位名，所以**这个坑每次都会踩到**。
+
+实测踩到的两处（都发生在 2026-10-05）：
+
+| 写法 | 结果 | 真值 |
+| --- | --- | --- |
+| `git ls-files \| grep -cE '\.(JPG\|HEIC\|JPEG\|MP4)$'` | **0**（"原图零跟踪"假通过） | 152 |
+| `git ls-tree -r -l HEAD \| grep '\.webp$' \| awk '{s+=$4}'` | **0.0 MB**（体积统计归零） | 47.3 MB |
+
+**正确写法**（二选一）：
+
+```bash
+# ① 首选：-z 交给 NUL 分隔，绕开引号
+git ls-files -z | tr '\0' '\n' | grep -ciE '\.(jpg|jpeg|heic|mp4)$'
+git ls-tree -r -l -z HEAD | tr '\0' '\n' | grep -E '\.webp$' | awk '{s+=$4} END {printf "%.1f\n", s/1048576}'
+
+# ② 不想加 -z 时，把模式写成允许尾随引号的形式
+git ls-tree -r -l HEAD | grep -E '\.webp"?$'
+```
+
+- 适用范围：**不止"原图零跟踪"这类判定命令，体积统计同样中招** —— 后面这个更难发现，
+  因为它输出的是一个看上去很正常的小数字（0.0 MB）而不是报错
+- 连带提醒：`git status --porcelain` 也会有同样的加引号行为，解析它对路径要小心

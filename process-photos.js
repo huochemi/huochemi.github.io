@@ -9,7 +9,15 @@ const sharp = require('sharp');
 const execFileAsync = promisify(execFile);
 
 // 1. 配置图片目录和输出 JSON 的路径
-const IMGS_DIR = path.join(__dirname, '../data/photos'); // 指向 ../data/photos
+//
+// 双根（形态 B，2026-10-05 起）：**原图**（真相源、不可再生）在原图仓
+// `../photos-originals`，**派生图**（可再生）在 data 仓。管线从 ORIGIN_DIR 读原图、
+// 向 IMGS_DIR 写派生图；`index.json` 与全部前端链接仍留在 IMGS_DIR，因此
+// BASE_URL 与 output.json 的结构零改动。详见
+// docs/plans/2026-10-04-data-repo-longevity.md 与 docs/data-pipeline.md。
+// 三个 CLI 各存一份同值副本（刻意不抽共享模块），有跨文件测试锁定一致。
+const ORIGIN_DIR = path.join(__dirname, '../photos-originals/photos');
+const IMGS_DIR = path.join(__dirname, '../data/photos'); // 派生图输出根（沿用 /data 项目站）
 const OUTPUT_FILE = path.join(__dirname, 'src', 'Application', 'output.json');
 
 // 支持的媒体扩展名：图片 + 视频（mp4）。视频与照片同口径参与 GPS 硬拦
@@ -40,7 +48,7 @@ const THUMB_SIZE = 300;
 const THUMB_QUALITY = 80;
 // 派生图文件名后缀（delete-photo.js / fix-gps.js 各有一套同值副本，改这里需同步）
 const THUMB_SUFFIX = '_thumb.webp';
-const DISPLAY_SUFFIX = '_display.webp';
+const DISPLAY_SUFFIX = '_display.avif';
 // 视频转码版文件名后缀（浏览器实际播放的文件；原片不入 data 仓库 git）
 const WEB_VIDEO_SUFFIX = '_web.mp4';
 // 任何媒体扫描都必须排除的派生文件后缀——不排除的话，重跑管线会把
@@ -57,9 +65,13 @@ const VIDEO_MAX_HEIGHT = 720;
 const VIDEO_AUDIO_BITRATE = '128k';
 
 // 展示图配置：1920px 宽（网页 Lightbox 全屏展示足够），
-// 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化
+// 原图动辄数 MB，展示图体积约为原图 1/10，是首屏大图加载的根因优化。
+// 2026-10-05 起编码格式由 WebP 换为 AVIF：同视觉质量下体积约再降一半
+// （本机实测 1920px 合成图 WebP q75 = 800 KB vs AVIF q60 = 441 KB，真实照片
+// 通常更好）。坑：`sharp.format.avif` 是 undefined 属**正常**——AVIF 归在
+// `sharp.format.heif` 下（alias: ["avif"]），`.avif()` 方法照常可用，别被误导。
 const DISPLAY_SIZE = 1920;
-const DISPLAY_QUALITY = 75;
+const DISPLAY_QUALITY = 60;
 
 // 拍摄设备分类：把 EXIF 的 Make / Model 归一为「手机 / 相机」两类枚举。
 // 只存语义、不存品牌名也不存 emoji——前端角标空间有限（只放图标），
@@ -210,8 +222,9 @@ async function generateThumbnail(inputPath, outputPath) {
 }
 
 /**
- * 使用 sharp 生成 1920px 宽的 WebP 展示图（保持宽高比，仅限制长边）
- * 供 Lightbox 大图展示使用；原图 webViewLink 仅保留为下载/原始文件入口。
+ * 使用 sharp 生成 1920px 宽的 AVIF 展示图（保持宽高比，仅限制长边）
+ * 供 Lightbox 大图展示使用；原图不再有 webViewLink 入口（2026-10-05 取消），
+ * 展示图即最高画质档。
  * HEIC 处理策略与 generateThumbnail 相同：先经 sips 转码为 JPEG。
  *
  * @param {string} inputPath 原始图片绝对路径
@@ -233,7 +246,7 @@ async function generateDisplayImage(inputPath, outputPath) {
     await sharp(sharpInput)
       .rotate() // 根据 EXIF 自动纠正图片方向
       .resize({ width: DISPLAY_SIZE, withoutEnlargement: true }) // 长边限制，不放大
-      .webp({ quality: DISPLAY_QUALITY })
+      .avif({ quality: DISPLAY_QUALITY })
       .toFile(outputPath);
   } finally {
     if (tmpJpegPath) {
@@ -360,10 +373,13 @@ async function generateVideoThumbnail(sourcePath, outputPath, durationSeconds) {
 /**
  * 数据一致性检查（只报告：不修改任何文件、不改变退出码、不调用外部命令）
  *
- * 检查项：孤儿派生文件——`_thumb.webp` / `_display.webp` / `_web.mp4` 找不到同名原媒体。
+ * 检查项：孤儿派生文件——`_thumb.webp` / `_display.avif` / `_web.mp4` 找不到同名原媒体。
  * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
  * 报告用 ❗ 前缀而非 ⏭️，与"未通过预检的文件夹"这一层判定区分开
  * （后者会改退出码，孤儿文件只报告、不改退出码）。
+ *
+ * 双根说明：派生文件在 IMGS_DIR、原媒体（配对基准）在 ORIGIN_DIR——基名必须
+ * 从原图仓取，否则形态 B 之后全部派生文件都会被误报成孤儿。
  *
  * @param {string[]} dirNames 照片文件夹名列表
  */
@@ -383,7 +399,13 @@ async function reportInconsistencies(dirNames) {
     // 原媒体基名集合（不带扩展名），用于与派生文件配对。
     // 视频原片（X.mp4）也在基名集合里——它的转码版 X_web.mp4 因此不算孤儿
     const stems = new Set();
-    for (const file of files) {
+    let originFiles = [];
+    try {
+      originFiles = await fs.readdir(path.join(ORIGIN_DIR, dirName));
+    } catch {
+      // 原图仓缺该点位目录：基名为空，下面会如实报孤儿——那是真问题，不该静默
+    }
+    for (const file of originFiles) {
       if (
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
         !isDerivedFile(file)
@@ -657,11 +679,15 @@ async function readPhotoMeta(filePath) {
  * 派生图之前暴露，不留半成品（见 docs/plans/2026-10-03-gps-gate-hardening.md）。
  * 失败不抛错，返回带 reason 的对象，由调用方跳过该文件夹而不影响其它文件夹。
  *
+ * 双根：`index.json`（站点元数据）与派生图输出在 IMGS_DIR；**原媒体在 ORIGIN_DIR**
+ * ——媒体清单与 EXIF 一律从原图仓读，这样"原图是否完整"就是判定输入，硬拦口径不变。
+ *
  * @param {string} dirName 文件夹名
  * @returns {Promise<object>} 通过时含 images 等字段；失败时含 reason / hint
  */
 async function preflightDir(dirName) {
-  const dirPath = path.join(IMGS_DIR, dirName);
+  const dirPath = path.join(IMGS_DIR, dirName); // 派生图输出目录 / index.json 所在
+  const originDirPath = path.join(ORIGIN_DIR, dirName); // 原媒体所在
   try {
     // --- 强校验：检查 index.json 是否存在并解析 ---
     let indexConfig;
@@ -688,8 +714,17 @@ async function preflightDir(dirName) {
       };
     }
 
-    // 过滤出媒体文件（图片 + 视频原片；剔除全部派生文件）
-    const files = await fs.readdir(dirPath);
+    // 过滤出媒体文件（图片 + 视频原片；剔除全部派生文件）——取自原图仓
+    let files;
+    try {
+      files = await fs.readdir(originDirPath);
+    } catch (err) {
+      return {
+        dirName,
+        reason: `原图仓中读不到点位目录: ${err.message}`,
+        hint: `确认 ${ORIGIN_DIR}/${dirName} 存在且可读后重跑：npm run photos`,
+      };
+    }
     const mediaFiles = files.filter(
       (file) =>
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
@@ -714,11 +749,12 @@ async function preflightDir(dirName) {
       };
     }
 
-    // 并行读取全部媒体的元数据（照片走 exifr，视频走 exiftool）
+    // 并行读取全部媒体的元数据（照片走 exifr，视频走 exiftool；路径取自原图仓）
     const images = await Promise.all(
       mediaFiles.map(async (file) => ({
         file,
-        meta: await readPhotoMeta(path.join(dirPath, file)),
+        filePath: path.join(originDirPath, file),
+        meta: await readPhotoMeta(path.join(originDirPath, file)),
       })),
     );
 
@@ -758,7 +794,7 @@ async function preflightDir(dirName) {
       };
     }
 
-    return { dirName, dirPath, indexConfig, coverFileName, images };
+    return { dirName, dirPath, originDirPath, indexConfig, coverFileName, images };
   } catch (err) {
     return {
       dirName,
@@ -771,22 +807,24 @@ async function preflightDir(dirName) {
 /**
  * 生成阶段：为通过预检的文件夹生成派生图并聚合数据
  * 元数据全部取自预检结果，不再重复读 EXIF。
+ * 双根：**读原图**走 ORIGIN_DIR（由预检给出的 filePath），**写派生图**走 IMGS_DIR
+ * （dirPath）——派生图是 Pages 要发布的文件，必须落在 data 仓。
  * @param {object} preflight preflightDir 的返回值
  * @returns {Promise<object>} output.json 中的一条文件夹数据
  */
 async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images }) {
   const photos = await Promise.all(
-    images.map(async ({ file, meta }) => {
+    images.map(async ({ file, filePath, meta }) => {
       const parsed = path.parse(file);
       const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
       const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
-      const filePath = path.join(dirPath, file);
       const video = isVideoFile(file);
 
       if (video) {
         // 视频：转码版（浏览器实际播放）+ 封面帧缩略图。
-        // 没有"展示图"档（Lightbox 直接播 videoLink）；原片不入 data 仓库
-        // git，故也不产出 webViewLink（"查看原始文件"对视频无意义）
+        // 没有"展示图"档（Lightbox 直接播 videoLink）；原片只存原图仓，
+        // 且全站已取消"查看原始文件"入口（2026-10-05），故本分支与照片分支
+        // 都不再产出 webViewLink
         const webFileName = `${parsed.name}${WEB_VIDEO_SUFFIX}`;
         try {
           await generateWebVideo(filePath, path.join(dirPath, webFileName));
@@ -851,8 +889,8 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
       }
 
       // 数据项：视频与照片的公共部分（坐标/时间/设备/溯源）完全同构，
-      // 差异只在链接三元组——视频是 type + videoLink，没有 displayLink /
-      // webViewLink；type 缺省即照片（output.json 老数据向后兼容）
+      // 差异只在链接二元组——视频是 type + videoLink，没有 displayLink；
+      // type 缺省即照片（output.json 老数据向后兼容）
       const item = video
         ? {
             fileName: file,
@@ -864,7 +902,6 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
             fileName: file,
             thumbnailLink: `${BASE_URL}/${dirName}/${thumbFileName}`,
             displayLink: `${BASE_URL}/${dirName}/${displayFileName}`,
-            webViewLink: `${BASE_URL}/${dirName}/${file}`,
           };
       if (video && meta.duration !== undefined) {
         item.duration = meta.duration;
@@ -888,8 +925,8 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
   );
 
   // 封面（预检已确认存在且带坐标），组级坐标取封面坐标。
-  // 封面可以是视频（用户 2026-10-04 拍板）：视频封面没有展示图档与原片链接
-  // （原片不入库），组级链接换成 videoLink，并带 type 供前端识别
+  // 封面可以是视频（用户 2026-10-04 拍板）：视频封面没有展示图档（原片只存
+  // 原图仓），组级链接换成 videoLink，并带 type 供前端识别
   const cover = images.find((image) => image.file === coverFileName).meta;
   const coverStem = path.parse(coverFileName).name;
   const coverIsVideo = isVideoFile(coverFileName);
@@ -905,7 +942,6 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
         }
       : {
           displayLink: `${BASE_URL}/${dirName}/${coverStem}${DISPLAY_SUFFIX}`,
-          webViewLink: `${BASE_URL}/${dirName}/${coverFileName}`,
         }),
     fileName: coverFileName,
     dirName: dirName,
@@ -936,6 +972,77 @@ async function ensureVideoToolchain() {
   }
 }
 
+/**
+ * 双根启动预检（AGENTS.md S3：假设环境已就绪，只预检一次，缺失即报错退出，
+ * 不做多路兜底）。返回本次要处理的点位目录名列表（两侧取并集）。
+ *
+ * 规则：
+ * - 两个根目录都必须存在，否则报错退出并附建立提示
+ * - 只在 **data 侧** 存在的点位 → 报错退出：原图是管线唯一的输入源，
+ *   原图仓缺该点位就无从读原图（且极可能是上次搬家漏拷）
+ * - 只在 **原图仓** 存在的点位 → 在 data 侧自动建空目录（无害）：缺 index.json
+ *   会在文件夹级预检里被正常跳过，而不是让整轮硬失败
+ *
+ * @returns {Promise<string[]>} 点位目录名（升序、去重）
+ */
+async function resolvePointDirs() {
+  const roots = [
+    { label: '原图仓', dir: ORIGIN_DIR },
+    { label: 'data 仓', dir: IMGS_DIR },
+  ];
+  for (const { label, dir } of roots) {
+    const stat = await fs.stat(dir).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new Error(
+        `${label}的 photos 根目录不存在：${dir}\n` +
+          (label === '原图仓'
+            ? '请先建立原图仓并放入原图（见 docs/plans/2026-10-04-data-repo-longevity.md 阶段 1）'
+            : '请检查 ../data 仓库是否完整'),
+      );
+    }
+  }
+
+  const listDirs = async (root) =>
+    (await fs.readdir(root, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+  const [originDirs, dataDirs] = await Promise.all([
+    listDirs(ORIGIN_DIR),
+    listDirs(IMGS_DIR),
+  ]);
+  const originSet = new Set(originDirs);
+  const dataSet = new Set(dataDirs);
+
+  const onlyInData = dataDirs.filter((name) => !originSet.has(name));
+  if (onlyInData.length > 0) {
+    throw new Error(
+      `${onlyInData.length} 个点位在 data 仓有目录、原图仓却没有：` +
+        `${onlyInData.join('、')}\n` +
+        `原图是管线唯一的输入源，请把这些点位的原图放进 ${ORIGIN_DIR}/ 下的同名目录后重跑。`,
+    );
+  }
+
+  const onlyInOrigin = originDirs.filter((name) => !dataSet.has(name));
+  if (onlyInOrigin.length > 0) {
+    // 无害：先建空目录，缺 index.json 会在文件夹级预检里被跳过并给出提示
+    await Promise.all(
+      onlyInOrigin.map((name) =>
+        fs.mkdir(path.join(IMGS_DIR, name), { recursive: true }),
+      ),
+    );
+    console.log(
+      color.yellow(
+        `⚠️ ${onlyInOrigin.length} 个点位只在原图仓存在，已在 data 仓建空目录` +
+          `（缺 index.json 会被预检跳过）：${onlyInOrigin.join('、')}`,
+      ),
+    );
+  }
+
+  return [...new Set([...dataDirs, ...originDirs])].sort();
+}
+
 /** 打印未通过预检的文件夹清单（一行一个，附下一步命令） */
 function reportSkippedDirs(failed) {  console.log(
     color.yellow(`\n⏭️ ${failed.length} 个文件夹未通过预检，本轮不产出数据：`),
@@ -953,13 +1060,11 @@ async function processAllPhotos() {
   });
   console.log(`开始时间: ${startTimeStr}`);
   try {
-    console.log(`正在读取根目录: ${IMGS_DIR}...`);
+    console.log(`原图根目录: ${ORIGIN_DIR}（读）`);
+    console.log(`派生图根目录: ${IMGS_DIR}（写）`);
 
-    // 1. 读取根目录下的所有子项（拿到子文件夹列表）
-    const entries = await fs.readdir(IMGS_DIR, { withFileTypes: true });
-
-    // 过滤出所有子文件夹
-    const subDirs = entries.filter((entry) => entry.isDirectory());
+    // 1. 双根预检 + 取点位目录列表（两侧并集）
+    const subDirs = (await resolvePointDirs()).map((name) => ({ name }));
 
     console.log(
       `找到 ${subDirs.length} 个子文件夹，开始按文件夹及 index.json 校验生成数据...`,
@@ -968,10 +1073,10 @@ async function processAllPhotos() {
     // 1.5 视频工具链预检（AGENTS.md S3：假设已装、缺失即报错退出附安装命令）。
     //     仅当存在视频文件时才检查——ffmpeg / exiftool 只服务视频（转码、抽帧、
     //     元数据读取），纯照片文件夹缺 ffmpeg 不该被拦住（plan 已确认的必要偏离）。
-    //     视频读取走 exiftool，故 exiftool 一并在此时预检
+    //     视频读取走 exiftool，故 exiftool 一并在此时预检。原片在原图仓，扫 ORIGIN_DIR
     const dirFileLists = await Promise.all(
       subDirs.map((dir) =>
-        fs.readdir(path.join(IMGS_DIR, dir.name)).catch(() => []),
+        fs.readdir(path.join(ORIGIN_DIR, dir.name)).catch(() => []),
       ),
     );
     const hasVideo = dirFileLists.some((files) =>

@@ -3,6 +3,23 @@
 本文件记录 `src/Application/` 的结构约定。领域知识另见 `docs/data-pipeline.md`
 （照片管线）与 `docs/toolchain.md`（工具链）。
 
+## `/data` 的发布方式（照片数据的来源）
+
+地图页的照片**不在本仓库**：`output.json` 里的链接是**相对路径** `/data/photos/…`，
+由 `huochemi/data` 仓库提供。线上与本地各接一头：
+
+| 环境 | 谁提供 `/data/…` |
+|---|---|
+| 线上 | `huochemi/data` 作为 **GitHub Pages 项目站点**发布到 `https://huochemi.github.io/data/`（已实测 `…/IMG_5195_thumb.webp` 返回 `image/webp`） |
+| 本地 dev | `src/setupProxy.js` 把 `/data` 静态挂到本地 `../../data`（**仅 dev server 生效**，`build` 不受影响，故本地增删照片无需先提交 data 仓） |
+
+**相对路径是刻意的**：线上与本地共用同一套 URL，前端零环境分支。
+
+> 2026-10-05 形态 B 起，**原图**移出 `data` 仓、进私有存档仓 `photos-originals`；
+> 该仓**不开 Pages、不参与任何前端链接**——`/data/photos/…` 的结构与路径完全不变。
+> 详见 `docs/data-pipeline.md`「双根管线」与
+> `docs/plans/2026-10-04-data-repo-longevity.md`。
+
 ## 目录
 
 ```

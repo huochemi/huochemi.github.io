@@ -89,7 +89,7 @@ test('isVideoFile：按扩展名识别 mp4（大小写不敏感），图片不�
 
 test('isDerivedFile：三种派生后缀都识别，原媒体不误伤', () => {
   assert.equal(isDerivedFile('IMG_5810_thumb.webp'), true);
-  assert.equal(isDerivedFile('IMG_5810_display.webp'), true);
+  assert.equal(isDerivedFile('IMG_5810_display.avif'), true);
   assert.equal(isDerivedFile('IMG_5810_web.mp4'), true);
   assert.equal(isDerivedFile('IMG_5810.mp4'), false);
   assert.equal(isDerivedFile('IMG_5810.HEIC'), false);
@@ -136,13 +136,13 @@ test('契约：三个 CLI 的 DERIVED_SUFFIXES 完全一致', () => {
     const suffixes = resolveSuffixesFromSource(readSource(file), file);
     assert.deepEqual(
       suffixes,
-      ['_thumb.webp', '_display.webp', '_web.mp4'],
+      ['_thumb.webp', '_display.avif', '_web.mp4'],
       `${file} 的派生后缀与契约不一致`,
     );
   }
   // process-photos.js 的运行时导出值（require 拿到的）也要与源码字面量一致，
   // 防止"常量拼装与字面量脱节"这种单文件内漂移
-  assert.deepEqual(DERIVED_SUFFIXES, ['_thumb.webp', '_display.webp', '_web.mp4']);
+  assert.deepEqual(DERIVED_SUFFIXES, ['_thumb.webp', '_display.avif', '_web.mp4']);
 });
 
 test('契约：三个 CLI 的 ALLOWED_EXTS 都已包含 .mp4', () => {

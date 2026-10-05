@@ -256,19 +256,6 @@
   gap: 16px;
 }
 
-/* 查看原始文件链接 */
-.lightboxLink {
-  color: #60a5fa;
-  font-size: 14px;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.lightboxLink:hover {
-  color: #93c5fd;
-  text-decoration: underline;
-}
-
 /* 信息面板切换按钮（"ⓘ"） */
 .lightboxInfoBtn {
   border: none;
