@@ -702,8 +702,15 @@ async function preflightDir(dirName) {
     } catch (err) {
       return {
         dirName,
+        // 提示必须自足（用户 2026-10-05 要求）：给出改哪个文件、或用什么命令建好。
+        // 新点位（原图仓已有、data 侧还没配）用脚手架一次建好；不传 --cover 会列出
+        // 该点位可选的文件名（new-place 不替你挑封面）。见
+        // docs/plans/2026-10-05-photos-no-empty-dir.md、2026-10-05-new-place-scaffold.md
         reason: `缺少 index.json 或文件 JSON 格式不正确: ${err.message}`,
-        hint: '修正 index.json 后重跑：npm run photos',
+        hint:
+          '修正 index.json 后重跑：npm run photos\n' +
+          '    新点位可用脚手架一次建好；不传 --cover 会列出该点位可选的文件名：\n' +
+          `    npm run new-place -- "${dirName}"`,
       };
     }
 
@@ -997,12 +1004,13 @@ async function ensureVideoToolchain() {
  * 双根启动预检（AGENTS.md S3：假设环境已就绪，只预检一次，缺失即报错退出，
  * 不做多路兜底）。返回本次要处理的点位目录名列表（两侧取并集）。
  *
- * 规则：
+ * 规则（本函数**全程只读**，不写任何文件/目录）：
  * - 两个根目录都必须存在，否则报错退出并附建立提示
  * - 只在 **data 侧** 存在的点位 → 报错退出：原图是管线唯一的输入源，
  *   原图仓缺该点位就无从读原图（且极可能是上次搬家漏拷）
- * - 只在 **原图仓** 存在的点位 → 在 data 侧自动建空目录（无害）：缺 index.json
- *   会在文件夹级预检里被正常跳过，而不是让整轮硬失败
+ * - 只在 **原图仓** 存在的点位 → 不做任何写入，该点位照常进入文件夹级预检，
+ *   并因缺 index.json 被跳过（跳过语义与其它失败点位一致）。原先会在此建空目录，
+ *   已移除——理由见 docs/plans/2026-10-05-photos-no-empty-dir.md
  *
  * @returns {Promise<string[]>} 点位目录名（升序、去重）
  */
@@ -1034,7 +1042,6 @@ async function resolvePointDirs() {
     listDirs(IMGS_DIR),
   ]);
   const originSet = new Set(originDirs);
-  const dataSet = new Set(dataDirs);
 
   const onlyInData = dataDirs.filter((name) => !originSet.has(name));
   if (onlyInData.length > 0) {
@@ -1045,21 +1052,10 @@ async function resolvePointDirs() {
     );
   }
 
-  const onlyInOrigin = originDirs.filter((name) => !dataSet.has(name));
-  if (onlyInOrigin.length > 0) {
-    // 无害：先建空目录，缺 index.json 会在文件夹级预检里被跳过并给出提示
-    await Promise.all(
-      onlyInOrigin.map((name) =>
-        fs.mkdir(path.join(IMGS_DIR, name), { recursive: true }),
-      ),
-    );
-    console.log(
-      color.yellow(
-        `⚠️ ${onlyInOrigin.length} 个点位只在原图仓存在，已在 data 仓建空目录` +
-          `（缺 index.json 会被预检跳过）：${onlyInOrigin.join('、')}`,
-      ),
-    );
-  }
+  // 「只在原图仓存在」的点位不在这里处理：它留在下面的并集里，由文件夹级预检
+  // 因缺 index.json 判失败并跳过（提示见 preflightDir）。此处**不做任何写入**——
+  // 建空目录曾导致 data 侧留下 git 不可见的半状态，并在原图仓该点位被删除后
+  // 命中 onlyInData 而整轮误报失败。见 docs/plans/2026-10-05-photos-no-empty-dir.md
 
   return [...new Set([...dataDirs, ...originDirs])].sort();
 }
