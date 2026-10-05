@@ -57,6 +57,19 @@ const WEB_VIDEO_SUFFIX = '_web.mp4';
 const DERIVED_SUFFIXES = [THUMB_SUFFIX, DISPLAY_SUFFIX, WEB_VIDEO_SUFFIX];
 const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
 
+// 增量跳过（2026-10-05）：派生图已是最新（mtime ≥ 原片）就跳过重编码。落地依据与
+// 实测（单张 ~0.95 s 里展示图 AVIF 占 84%；全量 326 个派生文件里 324 个无需重算）
+// 见 docs/plans/2026-10-05-photos-incremental-skip.md。
+//
+// `--force`：忽略全部 mtime 判据、强制重新生成。它是判据失灵场景的**统一显式出口**
+// （改档位常量后旧派生图仍被判"最新" / 派生文件损坏或 0 字节 / 原地覆盖同名原片且
+// 新文件 mtime 更早）——只影响"是否重算"，不改变任何判定与产出内容。
+let forceRebuild = false;
+// 本轮派生文件计数（复用 / 重新生成），供收尾汇总打印。
+// 按**文件**计（一张照片 2 个）而非按媒体计——后者需要在调用点再判一次，
+// 等于把同一判据复制成两处口径。
+const derivedStats = { reused: 0, generated: 0 };
+
 // 视频转码档位（2026-10-04 用户拍板）：libx264 CRF30、高度压到 ≤720p、
 // 保留源帧率、AAC 128k。实测 65.5 MB 原片（1080p60）→ 8.6 MB，
 // 档位取舍依据见 docs/plans/2026-10-04-video-mp4-support.md 决策 1
@@ -194,6 +207,13 @@ function normalizeExifDateTime(raw) {
  * @param {string} outputPath 缩略图保存绝对路径
  */
 async function generateThumbnail(inputPath, outputPath) {
+  // 增量：派生图已是最新则跳过（--force 时强制重来）
+  if (!forceRebuild && (await derivedIsUpToDate(inputPath, outputPath))) {
+    derivedStats.reused += 1;
+    return;
+  }
+  derivedStats.generated += 1;
+
   let sharpInput = inputPath;
   let tmpJpegPath = null;
 
@@ -233,6 +253,13 @@ async function generateThumbnail(inputPath, outputPath) {
  * @param {string} outputPath 展示图保存绝对路径
  */
 async function generateDisplayImage(inputPath, outputPath) {
+  // 增量：派生图已是最新则跳过（--force 时强制重来）
+  if (!forceRebuild && (await derivedIsUpToDate(inputPath, outputPath))) {
+    derivedStats.reused += 1;
+    return;
+  }
+  derivedStats.generated += 1;
+
   let sharpInput = inputPath;
   let tmpJpegPath = null;
 
@@ -258,13 +285,20 @@ async function generateDisplayImage(inputPath, outputPath) {
 }
 
 /**
- * 判断派生文件是否已比源头新（视频转码的增量跳过判据）。
- * 视频转码单次要 6~19 s，重跑管线不应反复重转；但 fix-gps 补坐标会更新原片
- * mtime——此时必须重转（新坐标要带进转码版），所以判据是
- * "派生文件存在且 mtime ≥ 原片 mtime 才跳过"。
+ * 判断派生文件是否已比源头新——**全部派生图（缩略图 / 展示图 / 视频转码版 / 视频封面帧）
+ * 共用的唯一增量判据**（2026-10-05 起由视频扩展到照片）。
+ *
+ * 展示图 AVIF 编码单张 ~0.8 s，占单张总耗时约 84%，重跑管线不该反复重编没变动的那些；
+ * 但 fix-gps 补坐标会更新原片 mtime——此时必须重建（派生图要带上新元数据 / 新像素），
+ * 所以判据是"派生文件存在且 mtime ≥ 原片 mtime 才跳过"。
+ *
+ * 用 `>=` 而非 `>`：与视频的既有实现保持一致，**不引入第二套比较口径**。判据的失败
+ * 方向是安全的——原片 mtime 变新即重建，宁可多算不会漏算；失灵场景（改档位常量、
+ * 派生文件损坏、原地覆盖同名原片）由 `--force` 兜住，不做自动探测。
+ *
  * @param {string} sourcePath 源文件绝对路径
  * @param {string} derivedPath 派生文件绝对路径
- * @returns {Promise<boolean>}
+ * @returns {Promise<boolean>} true = 已是最新、可跳过
  */
 async function derivedIsUpToDate(sourcePath, derivedPath) {
   const [sourceStat, derivedStat] = await Promise.all([
@@ -291,7 +325,12 @@ async function derivedIsUpToDate(sourcePath, derivedPath) {
  * @param {string} outputPath 转码版输出绝对路径
  */
 async function generateWebVideo(sourcePath, outputPath) {
-  if (await derivedIsUpToDate(sourcePath, outputPath)) return;
+  // 增量：转码版已是最新则跳过（--force 时强制重来）
+  if (!forceRebuild && (await derivedIsUpToDate(sourcePath, outputPath))) {
+    derivedStats.reused += 1;
+    return;
+  }
+  derivedStats.generated += 1;
   await execFileAsync('ffmpeg', [
     '-hide_banner',
     '-loglevel',
@@ -340,6 +379,14 @@ async function generateWebVideo(sourcePath, outputPath) {
  * @param {number|undefined} durationSeconds 视频时长（预检已读出，秒）
  */
 async function generateVideoThumbnail(sourcePath, outputPath, durationSeconds) {
+  // 增量：封面帧已是最新则跳过（--force 时强制重来）。抽帧 + sharp 缩略图约几百 ms，
+  // 与照片缩略图同口径——所有派生图走同一个判据，不留例外
+  if (!forceRebuild && (await derivedIsUpToDate(sourcePath, outputPath))) {
+    derivedStats.reused += 1;
+    return;
+  }
+  derivedStats.generated += 1;
+
   const seekTo = Math.max(0, Math.min(5, (durationSeconds || 0) / 2));
   // 唯一临时文件名，避免并行处理同名文件时互相覆盖（与 HEIC 的 sips 兜底同款写法）
   const unique = `${path.parse(sourcePath).name}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -478,6 +525,41 @@ function reportDeviceTypes(photos) {
   for (const combo of unidentifiedDevices) {
     console.log(`    ${combo}`);
   }
+}
+
+/**
+ * 派生图增量汇总（只报告：不修改任何文件、不改变退出码）
+ *
+ * 逐张跳过时静默（避免刷屏），只在收尾打印一次文件级计数——否则"为什么这么快"
+ * 无从解释，也不易发现判据误判（本该重建的被跳过）。按**文件**计：一张照片 2 个
+ * 派生文件（缩略图 + 展示图），一个视频 2 个（封面帧 + 转码版）。
+ * 前缀用 ℹ️ 而非 ⏭️——后者是"有问题或本轮未产出、须注意"（黄色，现用于未通过预检的
+ * 文件夹）；增量复用是正常行为，不该带警示色。
+ */
+function reportDerivedStats() {
+  console.log('\n派生图增量：');
+  console.log(
+    `  ℹ️ 复用 ${derivedStats.reused} 个（原图未变动）、重新生成 ${derivedStats.generated} 个`,
+  );
+}
+
+/** 解析命令行参数（当前只支持 --force）。风格对齐 fix-gps.js / new-place.js：未知参数即报错 */
+function parseArgs(argv) {
+  const args = { force: false };
+  for (const arg of argv) {
+    if (arg === '--force') {
+      args.force = true;
+    } else {
+      throw new Error(`未知参数：${arg}`);
+    }
+  }
+  return args;
+}
+
+function printUsage() {
+  console.log('用法：');
+  console.log('  npm run photos             增量生成（派生图已是最新的跳过重编码）');
+  console.log('  npm run photos -- --force  忽略增量判据，全部重新生成');
 }
 
 // ---------------------------------------------------------------------------
@@ -1079,6 +1161,9 @@ async function processAllPhotos() {
   try {
     console.log(`原图根目录: ${ORIGIN_DIR}（读）`);
     console.log(`派生图根目录: ${IMGS_DIR}（写）`);
+    if (forceRebuild) {
+      console.log('ℹ️ --force：忽略增量判据，全部重新生成');
+    }
 
     // 1. 双根预检 + 取点位目录列表（两侧并集）
     const subDirs = (await resolvePointDirs()).map((name) => ({ name }));
@@ -1118,6 +1203,11 @@ async function processAllPhotos() {
 
     // 3. 生成阶段：通过的文件夹照常生成派生图与数据（元数据复用预检结果）
     const results = await Promise.all(ready.map((result) => buildGroup(result)));
+
+    // 3.5 派生图增量汇总（只报告，不影响退出码；全军覆没时无内容可报，与设备汇总同条件）
+    if (results.length > 0) {
+      reportDerivedStats();
+    }
 
     if (results.length === 0) {
       // 全军覆没时不覆盖 output.json：否则会把线上已发布的照片数据清空，
@@ -1165,16 +1255,25 @@ async function processAllPhotos() {
 // 只在作为 CLI 直接运行时才执行；被 require 时（如 test/ 下的单测）保持静默，
 // 这样纯函数可以脱离文件系统与外部命令单独测试。
 if (require.main === module) {
+  try {
+    forceRebuild = parseArgs(process.argv.slice(2)).force;
+  } catch (err) {
+    console.error(color.red(`❌ ${err.message}`));
+    printUsage();
+    process.exit(1);
+  }
   processAllPhotos();
 }
 
-// 最小公共面：只暴露无副作用的纯函数与常量，供单测导入（node --test）。
+// 最小公共面：暴露无副作用的纯函数与常量，供单测导入（node --test）。
 // DERIVED_SUFFIXES 一并导出，供跨文件测试断言三个 CLI 的派生后缀口径一致。
+// derivedIsUpToDate 只读文件系统（不写不删），单测用临时目录 + fs.utimes 锁其语义边界。
 module.exports = {
   normalizeExifDateTime,
   stripTimezoneSuffix,
   isVideoFile,
   isDerivedFile,
+  derivedIsUpToDate,
   ALLOWED_EXTS,
   DERIVED_SUFFIXES,
 };
