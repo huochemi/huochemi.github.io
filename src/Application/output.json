@@ -807,6 +807,36 @@
     ]
   },
   {
+    "lat": 39.51013888888889,
+    "lng": 116.40915555555556,
+    "thumbnailLink": "/data/photos/北京市-大兴机场/IMG_4657_thumb.webp",
+    "displayLink": "/data/photos/北京市-大兴机场/IMG_4657_display.avif",
+    "fileName": "IMG_4657.HEIC",
+    "dirName": "北京市-大兴机场",
+    "description": "北京市-大兴机场",
+    "takenAt": "2026-07-27T12:14:27",
+    "photos": [
+      {
+        "fileName": "IMG_4657.HEIC",
+        "thumbnailLink": "/data/photos/北京市-大兴机场/IMG_4657_thumb.webp",
+        "displayLink": "/data/photos/北京市-大兴机场/IMG_4657_display.avif",
+        "lat": 39.51013888888889,
+        "lng": 116.40915555555556,
+        "takenAt": "2026-07-27T12:14:27",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_4666.HEIC",
+        "thumbnailLink": "/data/photos/北京市-大兴机场/IMG_4666_thumb.webp",
+        "displayLink": "/data/photos/北京市-大兴机场/IMG_4666_display.avif",
+        "lat": 39.507244444444446,
+        "lng": 116.40521944444446,
+        "takenAt": "2026-07-27T12:46:25",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 39.90069444444444,
     "lng": 116.49675,
     "thumbnailLink": "/data/photos/北京市-水南庄道口/IMG_4278_thumb.webp",
