@@ -46,7 +46,8 @@ agent 侧 `which` 报 not found **≠ 未安装**。
   - `node --test test/`（目录形式）❌ Node 22 报 `Cannot find module '…/test'`
     （22 把位置参数当 glob，`test/` 匹配到目录自身后按模块加载）
   - `node --test "test/**/*.test.js"`（加引号 = 交给 Node 自己展开）⚠️ Node 22 可用，
-    但 **CI 用的 Node 18 无 glob 支持**，会被当字面路径 → 跑不起来
+    但 **Node 18 无 glob 支持**，会被当字面路径 → 跑不起来（当初 CI 正是 18.x，故弃用；
+    2026-10-06 起 CI 已升 22.x，见下节——但**写法保持不变**：shell 展开与 Node 版本无关）
   - `node --test`（无参数、靠默认发现）❌ 会把 `src/` 下两个 CRA jest 测试也拉进来
     （node:test 下无 `describe` 全局）→ 2 fail
   - **`node --test test/*.test.js`（shell 展开）✅ 现用**：shell 先展开成显式文件列表
@@ -87,6 +88,32 @@ agent 侧 `which` 报 not found **≠ 未安装**。
   `npm run test:cli` 整个文件报 `SyntaxError`
 - 已否决的替代：根目录 CJS（ModuleScopePlugin 拦）、`.mjs` + node 动态 `import`
   （eslint/import 插件兼容性未验证）
+
+## CI 的 Node 版本必须满足 `sharp` 的 `engines`（npm 会静默跳过 optionalDependencies）（2026-10-06）
+
+**症状**：CI 里 `Run CLI tests` 恒红（`test/gps-sign.test.js` 整体失败），其余测试文件全绿；
+本地 `npm run test:cli` 却恒绿。
+
+**根因**：`sharp@0.35.4` 的 `engines.node` 是 `>= 20.9.0`，而 CI 当时用 Node 18.x。
+`sharp` 的**平台二进制**（`@img/sharp-<platform>`，含 `.node`）写在 **optionalDependencies**
+里，而 npm 对 optional 依赖遇 engines 不匹配时**只警告（`npm warn EBADENGINE`）、不报错，
+并静默跳过该包** → 无 engines 的 `@img/sharp-libvips-*` 装上了、含二进制的
+`@img/sharp-*` 没装 → `require('sharp')` 抛
+`Could not load the "sharp" module using the <platform> runtime`。
+
+- **最小复现**（隔离目录，别在生产数据上跑）：Node 18.20.8 下 `npm install sharp@0.35.4`
+  → 只有 `npm warn EBADENGINE`、`added 5 packages`、**exit 0**，`node_modules/@img` 里缺
+  `sharp-<platform>`；Node 22 对照为 `added 9 packages`、`require('sharp')` 正常
+- **只有执行到 `require('sharp')` 的路径才爆**：所以 `Install NPM packages` 与
+  `Build project` 两步都是绿的——webpack 只沿 `src/` 的 import 图打包，仓库根的 CLI
+  脚本（`process-photos.js` 顶层 `require('sharp')`）不在其中
+- **本地不可见的原因**：本地 `node_modules` 是更早在 Node ≥ 20.9 下装的，二进制已在盘上。
+  差异只在"安装期"，运行期看不出来——**换机器 / 换 CI 才暴露**
+- **判据**：CI 的 `node-version` 必须 ≥ 20.9（本项目 2026-10-06 起为 `22.x`，与本机
+  `node -v` 一致）。同理，凡在 CI 里跑照片管线（`npm run photos`）也会撞上这条
+- **别只看 exit code**：npm 装包返回 0 不代表依赖齐全；`EBADENGINE` 与"跳过的包数"
+  才是信号（本项目**未**加 `package.json` 的 `engines`，属待定项）
+- 决策记录：`plans/2026-10-06-ci-red-node18-sharp-optional-skip.md`
 
 ## react-scripts build 报 `EEXIST: file already exists, mkdir build`
 

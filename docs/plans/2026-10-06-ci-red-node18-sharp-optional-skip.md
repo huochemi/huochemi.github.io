@@ -1,9 +1,10 @@
 # Plan: CI 自 b49c557 起全红（Node 18 下 npm 静默跳过 sharp 平台包）+ 线上站点停更
 
-状态：**已批准 · 修复已实施（CI 验收中）**（2026-10-06 16:31 用户选 **A**：CI 的
-`node-version` 由 `18.x` → **`22.x`**（本机 `node -v` = `v22.22.2`，CI 与本地口径
-统一）；已推送。原「可选 D」（`package.json` 加 `engines`）**用户未表态，本轮未做**。
-实施与实测见文末「实施记录」）
+状态：**已实现**（2026-10-06 16:33 推送 `ae403f1` → CI 全绿、`Deploy to gh-pages`
+success、`gh-pages` tip 出现 `deploy: ae403f1…`、线上 bundle 已含「雅加达」与
+`server.arcgisonline` ⇒ **雅加达与「海外影像」第四档均已上线**。用户选 **A**：
+CI 的 `node-version` 由 `18.x` → `22.x`。原「可选 D」（`package.json` 加 `engines`）
+**用户未表态，未做**）
 日期：2026-10-06
 相关文档：`docs/toolchain.md`（`test:cli` 的写法与外部命令）、
 `docs/plans/2026-10-06-gps-sign-loss-and-jakarta.md`（把 CLI 单测接进 CI 的那次提交）、
@@ -186,9 +187,9 @@ CI 侧同一机制落在 `linux-x64` 上：`@img/sharp-linux-x64`（`engines >=2
 
 1. ✅ 用户回 **A**；本机 `node -v` = `v22.22.2` → CI 定 `22.x`；`engines` 未表态；
 2. ✅ 改 workflow（`18.x` → `22.x` + 2 行说明注释）；
-3. ⏳ 提交推送 → 盯该次 workflow 到 `deploy` success；
-4. ⏳ 线上验收（gh-pages tip + bundle 关键字 + 目视）；
-5. ⏳ docs 回写 + 本 plan 状态转「已实现」。
+3. ✅ 提交推送（`ae403f1`；pre-push ESLint 通过）→ 该次 workflow 全绿、`deploy` success；
+4. ✅ 线上验收（gh-pages tip + bundle 关键字；浏览器目视待用户）；
+5. ✅ docs 回写（`docs/toolchain.md` 新增一节 + 修正"CI 用 Node 18"的过时表述）。
 
 ## 实施记录（2026-10-06 16:3x）
 
@@ -200,4 +201,16 @@ CI 侧同一机制落在 `linux-x64` 上：`@img/sharp-linux-x64`（`engines >=2
   另加 2 行注释（写明 sharp 的 engines 下限与后果 + 指向本 plan），防止后人改回；
 - 连带提交：本 plan 自身（含「为什么直到 `b49c557` 才暴露」一节）**首次入库**
   （P1：决策记录留痕）；`huochemi-projects.code-workspace` 的改动**非本次所改，已排除**；
-- 验收实测（推送后回填）：CI 各步结论 / `gh-pages` tip / 线上 bundle 关键字。
+- **验收实测（全部通过）**：
+  - run `37436850420`（head `ae403f1`）**success**：`Run CLI tests` success、
+    `Build project` success、`Run tests` success、`Deploy to gh-pages` success
+    （对照：前两次 run 都挂在 `Run CLI tests`、Deploy 被 skipped）
+  - `gh-pages` tip = `d0cc78666f11`，提交信息 **`deploy: ae403f1df97a4317a198619e29661e2fe341f2fc`**
+    （= 本次 main 的 sha）→ 部署确实由本次提交产生
+  - 线上首页引用 **`static/js/main.3a37bdbc.js`**（596 075 B；旧为 `main.b5479f99.js`），
+    按转义串检索：`\u96c5\u52a0\u8fbe`（雅加达）**7 次**（改前 0 次）、
+    `\u6d77\u5916\u5f71\u50cf`（海外影像）1 次、`arcgisonline` 1 次、
+    `server.arcgisonline` 1 次（与定稿域名一致）；`乌兰察布` 129 / `北京` 121 与改前一致
+  - ⇒ **线上站点已恢复更新**；雅加达与「海外影像」第四档**首次真正上线**
+  - 剩余：浏览器目视（切「海外影像」看 Esri 高清、境内档无错位、左下角署名），
+    以及用户对「可选 D（`engines`）」表态
