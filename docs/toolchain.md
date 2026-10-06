@@ -17,6 +17,13 @@ agent 侧 `which` 报 not found **≠ 未安装**。
   内部用裸命令名调 `exiftool`（`fix-gps.js` 的 `execFileAsync('exiftool',...)`），
   按 PATH 解析——**agent 在沙箱里跑 `npm run fix-gps` 即使知道绝对路径也会在
   预检处报"未找到"**；按 S1/S2，写 EXIF 的执行本就交用户终端，这不是缺陷
+- **同源症状（2026-10-06 实测）**：`npm run test:cli` 在沙箱里**退出码 1**，摘要显示
+  `pass 38 / fail 0 / cancelled 2` —— 被取消的是 `test/gps-sign.test.js` 那两条依赖
+  fixture 的断言（错误文本 `test did not finish before its parent and was cancelled`）。
+  根因同上：fixture 由 `exiftool` 现造，PATH 里没有它 → `before` 钩子失败 → 子测试被取消。
+  **判据**：`PATH=/opt/homebrew/bin:$PATH npm run test:cli` 即可全绿（实测 40/40、exit 0）。
+  所以看到 `cancelledByParent` **先补 PATH，别当成代码回归**去查测试写法
+  （`fail 0` 与 `cancelled 2` 并存、且退出码为 1，是这一情形的特征）
 
 ## ESLint CLI lint 目录默认只查 `.js`
 
@@ -55,6 +62,31 @@ agent 侧 `which` 报 not found **≠ 未安装**。
   构造该距离要经 `sin → asin` 往返，结果带浮点噪声，钉不死这个边界。用变异测试
   实测确认过（把 `mergeAnchors` 的 `<` 改成 `<=`，10 条用例全绿）。实际影响为零：
   真实 GPS 漂移下不会恰好落在 5.000000 m
+
+## 前端纯函数若想被 CLI 单测覆盖，只有"src 内 CJS"这一种形态（2026-10-06）
+
+需求：某个**前端**用的纯函数（例：`src/Application/Map/AMap/overseasTiles.js` 的
+`overseasTileUrl`）既要被 webpack 打包进前端，又要被 `npm run test:cli` 的单测
+`require` 到。两边各有一条硬约束，交集只有一个：
+
+| 约束 | 后果 |
+|---|---|
+| CRA 的 `ModuleScopePlugin` 禁止 `src/` **之外**的相对 import | 放仓库根目录 ❌ 前端 import 不了 |
+| `package.json` 无 `"type": "module"`，`.js` 按 CJS 解析 | `src/` 下写 ESM 的文件 ❌ node 无法 `require`（SyntaxError） |
+| `test/` 是 `node --test` + CJS | 只能 `require`，不能 `import` |
+| ⇒ **`src/` 内的 CommonJS**（`module.exports = {...}`） | ✅ 唯一交集：webpack 5 对 CJS 具名导入支持良好，node 也能 require |
+
+补充事实（实测，避免重复调研）：
+
+- ESLint 不会因此报错：`eslint-config-react-app/base.js` 的 `env` 开了 `commonjs: true`
+  `node: true`，且整份配置**没有启用 `no-undef`**
+- babel-preset-react-app 的 `sourceType` 无论取 `unambiguous` 还是 `module`，该文件都
+  没有 ESM 语法可转，最终以 CJS 形式交给 webpack，故具名导入 `import { x } from './y'`
+  按 CJS 互操作解析
+- **代价**：文件头必须写明"勿顺手统一成 ESM"——否则后来者一次美化就会让
+  `npm run test:cli` 整个文件报 `SyntaxError`
+- 已否决的替代：根目录 CJS（ModuleScopePlugin 拦）、`.mjs` + node 动态 `import`
+  （eslint/import 插件兼容性未验证）
 
 ## react-scripts build 报 `EEXIST: file already exists, mkdir build`
 

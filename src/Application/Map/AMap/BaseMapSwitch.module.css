@@ -1,4 +1,4 @@
-/* 底图三档切换：右下角悬浮分段控件。
+/* 底图四档切换：右下角悬浮分段控件 + 左下角影像署名。
    视觉沿用全站语言（CityChips 的毛玻璃胶囊 + antd v5 主色选中态）。
 
    z-index 999 低于抽屉遮罩的 1000：抽屉/Lightbox 打开时被自然盖住——
@@ -44,4 +44,27 @@
 
 .optionActive:hover {
   background: #4096ff;
+}
+
+/* 影像源署名（仅在「海外影像」档渲染）。所用影像源的许可要求署名显示在
+   地图上或其附近，故常驻左下角；pointer-events: none 保证它不吃地图手势。
+
+   bottom 取 64px 而非与 .switcher 同排的 24px：四档按钮在窄屏已占满右侧，
+   抬高一行就彻底避开与控件的横向争位，无需媒体查询。 */
+.attribution {
+  position: fixed;
+  left: 16px;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 999;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  font-size: 11px;
+  line-height: 1.4;
+  color: #333;
+  pointer-events: none;
 }

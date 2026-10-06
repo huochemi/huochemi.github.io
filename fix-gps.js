@@ -1600,10 +1600,14 @@ if (require.main === module) {
 // 这一口径，并与 process-photos.js 的 PREFLIGHT_EXIF_OPTS 做跨文件一致性断言。
 // wgs84ToGcj02 导出是因为坐标转换错了会静默偏数百米——这是审阅页唯一的
 // "算错也不报错"的环节，必须有控制点单测兜着。
+// outOfChina 导出是因为"哪些算境内"这个界值在 src/Application/Map/AMap/overseasTiles.js
+// 里还有一份（那边决定境外瓦片换不换影像源），漂移会让境内边界瓦片静默违规——由
+// test/overseas-tiles.test.js 的边界探针锁两处同口径，故必须导出以接受断言。
 module.exports = {
   mergeAnchors,
   haversineMeters,
   ANCHOR_MERGE_METERS,
   wgs84ToGcj02,
+  outOfChina,
   REVIEW_EXIF_OPTS,
 };
