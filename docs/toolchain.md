@@ -31,14 +31,23 @@ agent 侧 `which` 报 not found **≠ 未安装**。
 `fix-gps.js` / `process-photos.js` 不是 CRA 的一部分——`react-scripts test` 的
 `roots` 固定为 `<rootDir>/src`，扫不到 repo 根的 CLI，所以 CLI 单测另起一条链：
 
-- 位置 `test/*.test.js`；跑法 `npm run test:cli`（= `node --test "test/**/*.test.js"`，
+- 位置 `test/*.test.js`；跑法 `npm run test:cli`（= `node --test test/*.test.js`，
   Node 内置 runner，零新依赖）
 - **两边互不干扰**（实测）：jest `--listTests` 只列出 `src/` 下三个文件，
   `node --test` 只跑 `test/`；CRA 的 `build` 也只打包 `src/`
-- **`node --test test/`（目录形式）会失效**：Node 22 把位置参数当 **glob** 而非目录，
-  `test/` 匹配到目录本身后按模块加载 → `MODULE_NOT_FOUND`（`ERR_TEST_FAILURE`）。
-  必须写成 `node --test "test/**/*.test.js"`——**加引号交给 Node 自己展开**，
-  别依赖 shell glob（无匹配时 zsh 会直接报错）
+- **写法只认"shell 展开"这一种**（2026-10-06 三种写法实测）：
+  - `node --test test/`（目录形式）❌ Node 22 报 `Cannot find module '…/test'`
+    （22 把位置参数当 glob，`test/` 匹配到目录自身后按模块加载）
+  - `node --test "test/**/*.test.js"`（加引号 = 交给 Node 自己展开）⚠️ Node 22 可用，
+    但 **CI 用的 Node 18 无 glob 支持**，会被当字面路径 → 跑不起来
+  - `node --test`（无参数、靠默认发现）❌ 会把 `src/` 下两个 CRA jest 测试也拉进来
+    （node:test 下无 `describe` 全局）→ 2 fail
+  - **`node --test test/*.test.js`（shell 展开）✅ 现用**：shell 先展开成显式文件列表
+    再交给 Node，与 Node 版本无关（18/22 皆可）
+  - 沿革：2026-10-04 首选的是加引号的 glob 形态（`plans/2026-10-04-fix-gps-merge-unit-test.md`），
+    因其在 Node 18 上不成立，2026-10-06 改为 shell 展开（`plans/2026-10-06-gps-sign-loss-and-jakarta.md`）
+- 代价：shell 展开**不递归子目录**，将来 `test/` 出现子目录需再调整；npm 脚本由 `sh`
+  执行（非 zsh），无匹配时把字面量透传给 Node 而不报错，故请勿让 `test/` 变成空目录
 - 想让 CLI 里的纯函数可测，必须 `if (require.main === module)` 包住顶层 `main()`
   调用再 `module.exports` 导出；否则 `require` 会直接把整个 CLI 跑起来（这是
   "想测却测不了"的根因，改 CLI 入口时别把守卫去掉）

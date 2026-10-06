@@ -582,10 +582,17 @@ const ANCHOR_MERGE_METERS = 5;
 // XMP 块一并滤掉，而设备/时间在 IFD0+EXIF 块、坐标在 GPS 块。
 // reviveValues: false 返回 EXIF 原始字符串，避免 exifr 转 Date 后 JSON 序列化时
 // 被错误地偏移为 UTC 时间。
+//
+// ⚠️ GPS 块**不做 pick**：exifr 的派生值 latitude/longitude 由 GPSLatitude 的度分秒
+// 数组 + 方位标记 GPSLatitudeRef/GPSLongitudeRef（N/S、E/W）算得。一旦 pick，就必须把
+// 两个 Ref 一并列上——**漏一个会静默丢符号**（南纬/西经读成正值，点位偏移可达上千公里
+// 且没有任何报错；2026-10-06 雅加达即此坑，见
+// docs/plans/2026-10-06-gps-sign-loss-and-jakarta.md）。不 pick 则由 exifr 自己按 Ref
+// 派生，读坐标的正确性不再依赖"调用方记得带上 Ref"这条隐式契约。
 const PREFLIGHT_EXIF_OPTS = {
   ifd0: { pick: ['Make', 'Model'] },
   exif: { pick: ['DateTimeOriginal'] },
-  gps: { pick: ['GPSLatitude', 'GPSLongitude', 'GPSProcessingMethod'] },
+  gps: {}, // 不 pick（别加回来）：见上，pick 就必须带上两个 Ref
   reviveValues: false,
 };
 
@@ -1275,6 +1282,8 @@ if (require.main === module) {
 
 // 最小公共面：暴露无副作用的纯函数与常量，供单测导入（node --test）。
 // DERIVED_SUFFIXES 一并导出，供跨文件测试断言三个 CLI 的派生后缀口径一致。
+// PREFLIGHT_EXIF_OPTS 一并导出，供 test/gps-sign.test.js 锁住"读坐标的 gps 块不得 pick"
+// 这一口径，并与 fix-gps.js 的 REVIEW_EXIF_OPTS 做跨文件一致性断言。
 // derivedIsUpToDate 只读文件系统（不写不删），单测用临时目录 + fs.utimes 锁其语义边界。
 module.exports = {
   normalizeExifDateTime,
@@ -1284,4 +1293,5 @@ module.exports = {
   derivedIsUpToDate,
   ALLOWED_EXTS,
   DERIVED_SUFFIXES,
+  PREFLIGHT_EXIF_OPTS,
 };

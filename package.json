@@ -31,7 +31,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "test:cli": "node --test \"test/**/*.test.js\"",
+    "test:cli": "node --test test/*.test.js",
     "eject": "react-scripts eject",
     "report": "react-scripts test --ci --coverage --watchAll=false && npx codecov -F unittests",
     "photos": "node process-photos.js",

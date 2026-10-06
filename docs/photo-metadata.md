@@ -30,12 +30,31 @@
 ### 前端解析配置的坑（改 pick 前必读）
 
 预检用**分块 pick**：`ifd0: { Make, Model }` / `exif: { DateTimeOriginal }` /
-`gps: { GPSLatitude, GPSLongitude, GPSProcessingMethod }`。两点实测结论：
+**`gps: {}`（GPS 块刻意不做 pick）**。三点实测结论：
 
 - **不能用顶层 `pick`**：它会把 XMP 块一并滤掉，而分块 pick 才能精确定位到各块
 - **`exif.latitude` / `exif.longitude` 这两个十进制派生字段只在同时 pick 了
   `GPSLatitude` 与 `GPSLongitude` 时才出现**；只 pick 其中一项会读不到坐标，
   表现为"全部照片都缺坐标"
+- **pick 了原始标签，还必须把 `GPSLatitudeRef` / `GPSLongitudeRef` 一并 pick**，
+  否则派生值 `latitude` / `longitude` **静默丢失符号**（南纬/西经读成正值），且全程
+  无任何报错。⇒ 当前口径：**读坐标时 GPS 块不做 pick**，由 exifr 自己按 Ref 派生——
+  正确性不再依赖"调用方记得带上 Ref"这条只写在注释里的隐式契约（第三块坑的真实
+  实例见下节）
+
+### 南纬符号丢失实例与测试兜底（2026-10-06）
+
+- **真实案例：雅加达（首个南半球点位，苏加诺-哈达国际机场）**。原图 EXIF 写作
+  `6°7'6.30" S`（`GPSLatitudeRef: South`），管线却产出 `"lat": 6.118416666666667`
+  ⇒ marker 被钉到北纬 6.118°（南海西南海面、马来西亚外海约 100 km），**静默偏移约
+  1362 km**。此前 17 个点位全在北纬东经、符号无差异，故历史数据从未暴露该缺陷
+- 决策记录与完整取证（五通道对比、根因、出界清单）：
+  `docs/plans/2026-10-06-gps-sign-loss-and-jakarta.md`
+- **测试兜底**：`test/gps-sign.test.js`（随 `npm run test:cli` 跑，已进 CI）——三条
+  断言：**绝对正确性**（防两个读取点一起错）、**跨文件一致性**（`process-photos.js` 的
+  `PREFLIGHT_EXIF_OPTS` 与 `fix-gps.js` 的 `REVIEW_EXIF_OPTS` 对同一 fixture 必须逐位
+  相同，防只改一处）、**结构锁**（两个配置的 GPS 块不含 `pick`，防有人改回分块 pick）。
+  fixture 由 `sharp` + `exiftool` 在 `os.tmpdir()` 现造，仓库不留二进制
 
 ### 前置步骤：`npm run fix-gps`
 
@@ -120,7 +139,7 @@
 ### 提取与分类
 
 - 与 `DateTimeOriginal` **共用同一次 `exifr.parse`**（分块 pick：
-  `ifd0: { Make, Model }` + `exif: { DateTimeOriginal }` + `gps: {...}`，
+  `ifd0: { Make, Model }` + `exif: { DateTimeOriginal }` + `gps: {}`，
   见上文"前端解析配置的坑"），不额外多读一遍 EXIF
 - `classifyDevice(make, model)` 按顺序命中即返回（规则与两张品牌表
   `PHONE_MAKES` / `CAMERA_MAKES` 均在 `process-photos.js` 内）：

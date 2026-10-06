@@ -2193,5 +2193,26 @@
         "device": "phone"
       }
     ]
+  },
+  {
+    "lat": -6.118416666666667,
+    "lng": 106.66468888888889,
+    "thumbnailLink": "/data/photos/雅加达-苏加诺-哈达国际机场/IMG_4919_thumb.webp",
+    "displayLink": "/data/photos/雅加达-苏加诺-哈达国际机场/IMG_4919_display.avif",
+    "fileName": "IMG_4919.HEIC",
+    "dirName": "雅加达-苏加诺-哈达国际机场",
+    "description": "雅加达-苏加诺-哈达国际机场",
+    "takenAt": "2026-07-30T07:08:49",
+    "photos": [
+      {
+        "fileName": "IMG_4919.HEIC",
+        "thumbnailLink": "/data/photos/雅加达-苏加诺-哈达国际机场/IMG_4919_thumb.webp",
+        "displayLink": "/data/photos/雅加达-苏加诺-哈达国际机场/IMG_4919_display.avif",
+        "lat": -6.118416666666667,
+        "lng": 106.66468888888889,
+        "takenAt": "2026-07-30T07:08:49",
+        "device": "phone"
+      }
+    ]
   }
 ]

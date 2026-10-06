@@ -523,11 +523,21 @@ function parseGeoSource(raw) {
   return match ? match[1] : 'unknown';
 }
 
-/** 审阅页扫描的 EXIF 配置：一次 parse 取回坐标、时间、溯源全部字段（分块 pick 必需） */
+/**
+ * 审阅页扫描的 EXIF 配置：一次 parse 取回坐标、时间、溯源全部字段（分块 pick 必需）
+ *
+ * ⚠️ GPS 块**不做 pick**：exifr 的派生值 latitude/longitude 由 GPSLatitude 的度分秒
+ * 数组 + 方位标记 GPSLatitudeRef/GPSLongitudeRef（N/S、E/W）算得。一旦 pick，就必须
+ * 把两个 Ref 一并列上——**漏一个会静默丢符号**（南纬/西经读成正值）。这里丢了符号的
+ * 后果比 process-photos 更隐蔽：本文件用 `readGps`（exifr.gps()，带符号）与它交叉校验
+ * （见 applyFix 的"计划可能已过期"判定），符号不一致会让南纬点位被误判为计划过期、
+ * 整个工具在该点位不可用。口径与 process-photos.js 的 PREFLIGHT_EXIF_OPTS 一致，
+ * 由 test/gps-sign.test.js 的跨文件断言锁住（2026-10-06）。
+ */
 const REVIEW_EXIF_OPTS = {
   ifd0: { pick: ['Make', 'Model'] },
   exif: { pick: ['DateTimeOriginal'] },
-  gps: { pick: ['GPSLatitude', 'GPSLongitude', 'GPSProcessingMethod'] },
+  gps: {}, // 不 pick（别加回来）：见上，pick 就必须带上两个 Ref
   reviveValues: false,
 };
 
@@ -1586,6 +1596,8 @@ if (require.main === module) {
 // 最小公共面：只暴露审阅页分组逻辑、坐标转换与它的距离判据常量，供单测导入。
 // ANCHOR_MERGE_METERS 一并导出，是为了让测试能断言它与 process-photos.js 的
 // 同名常量同值（那边各存一份，只靠注释声明"必须一致"，无机制强制）。
+// REVIEW_EXIF_OPTS 一并导出，供 test/gps-sign.test.js 锁住"读坐标的 gps 块不得 pick"
+// 这一口径，并与 process-photos.js 的 PREFLIGHT_EXIF_OPTS 做跨文件一致性断言。
 // wgs84ToGcj02 导出是因为坐标转换错了会静默偏数百米——这是审阅页唯一的
 // "算错也不报错"的环节，必须有控制点单测兜着。
 module.exports = {
@@ -1593,4 +1605,5 @@ module.exports = {
   haversineMeters,
   ANCHOR_MERGE_METERS,
   wgs84ToGcj02,
+  REVIEW_EXIF_OPTS,
 };
