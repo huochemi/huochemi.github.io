@@ -1,14 +1,17 @@
 {
   "folders": [
     {
-      "path": ".",
+      "path": "."
     },
     {
-      "path": "../../huochemi/data",
+      "path": "../../huochemi/data"
     },
     {
-      "path": "../../huochemi/photos-originals",
+      "path": "../../huochemi/photos-originals"
     },
+    {
+      "path": "../../gpx-viewer/gpx-viewer.github.io"
+    }
   ],
   "settings": {},
 }
