@@ -112,7 +112,14 @@ agent 侧 `which` 报 not found **≠ 未安装**。
 - **判据**：CI 的 `node-version` 必须 ≥ 20.9（本项目 2026-10-06 起为 `22.x`，与本机
   `node -v` 一致）。同理，凡在 CI 里跑照片管线（`npm run photos`）也会撞上这条
 - **别只看 exit code**：npm 装包返回 0 不代表依赖齐全；`EBADENGINE` 与"跳过的包数"
-  才是信号（本项目**未**加 `package.json` 的 `engines`，属待定项）
+  才是信号
+- **本项目已加 `engines` 兜告警（2026-10-06，方案 D）**：根 `package.json` 现声明
+  `"engines": { "node": ">=20.9.0" }`（值即 `sharp` 的 engines 下限）→ 低版本 Node 下
+  `npm install` 会打 `npm warn EBADENGINE Unsupported engine { … required: { node:`
+  `'>=20.9.0' }, current: { node: 'v18.20.8' } }`（实测：18.20.8 出现、22.22.2 无）
+- ⚠️ **`engines` 只告警、不拦截**：npm 默认 `engine-strict=false` → `EBADENGINE` 之后
+  **exit 仍为 0**，照样装完"能装的部分"（sharp 平台二进制依旧缺席、`require` 期才爆）。
+  要变成硬拦需 `.npmrc` 的 `engine-strict=true`，本项目**未**启用
 - 决策记录：`plans/2026-10-06-ci-red-node18-sharp-optional-skip.md`
 
 ## react-scripts build 报 `EEXIST: file already exists, mkdir build`

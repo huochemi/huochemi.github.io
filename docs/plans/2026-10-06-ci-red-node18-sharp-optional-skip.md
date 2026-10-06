@@ -3,8 +3,9 @@
 状态：**已实现**（2026-10-06 16:33 推送 `ae403f1` → CI 全绿、`Deploy to gh-pages`
 success、`gh-pages` tip 出现 `deploy: ae403f1…`、线上 bundle 已含「雅加达」与
 `server.arcgisonline` ⇒ **雅加达与「海外影像」第四档均已上线**。用户选 **A**：
-CI 的 `node-version` 由 `18.x` → `22.x`。原「可选 D」（`package.json` 加 `engines`）
-**用户未表态，未做**）
+CI 的 `node-version` 由 `18.x` → `22.x`；**原「可选 D」亦获批准并已实施**
+（2026-10-06 16:47，`package.json` 加 `engines.node = ">=20.9.0"`，见文末追加节）；
+浏览器目视**用户已确认无问题** —— 验收标准 5 闭合）
 日期：2026-10-06
 相关文档：`docs/toolchain.md`（`test:cli` 的写法与外部命令）、
 `docs/plans/2026-10-06-gps-sign-loss-and-jakarta.md`（把 CLI 单测接进 CI 的那次提交）、
@@ -191,6 +192,9 @@ CI 侧同一机制落在 `linux-x64` 上：`@img/sharp-linux-x64`（`engines >=2
 4. ✅ 线上验收（gh-pages tip + bundle 关键字；浏览器目视待用户）；
 5. ✅ docs 回写（`docs/toolchain.md` 新增一节 + 修正"CI 用 Node 18"的过时表述）。
 
+6. ✅ 用户批准「可选 D」→ `package.json` 加 `engines`（16:47）+ `docs/toolchain.md`
+   同步（见下节）。
+
 ## 实施记录（2026-10-06 16:3x）
 
 - 用户只回了一个字 **"A"**，未答 `engines` → 按 plan 的改动清单**只动 workflow 一行**，
@@ -214,3 +218,23 @@ CI 侧同一机制落在 `linux-x64` 上：`@img/sharp-linux-x64`（`engines >=2
   - ⇒ **线上站点已恢复更新**；雅加达与「海外影像」第四档**首次真正上线**
   - 剩余：浏览器目视（切「海外影像」看 Esri 高清、境内档无错位、左下角署名），
     以及用户对「可选 D（`engines`）」表态
+
+## 追加实施：可选 D（`package.json` 加 `engines`）（2026-10-06 16:47）
+
+- 用户 16:46 表态「改」（指方案 D）；同一条消息确认**浏览器目视已看过、无问题**
+  → 验收标准 5 闭合，本 plan 无剩余待办
+- 改动：`package.json` 在 `private` 之后插入 `"engines": { "node": ">=20.9.0" }`
+  （值取 `sharp` 的 engines 下限，非随手取整），`git diff` 仅此 3 行
+- **实测（隔离目录 `/tmp/engprobe` 复刻同字段，不动工作区 `node_modules`）**：
+  - Node **18.20.8** + npm 10.8.2 → `npm warn EBADENGINE Unsupported engine {
+    package: 'engprobe@1.0.0', required: { node: '>=20.9.0' },
+    current: { node: 'v18.20.8', npm: '10.8.2' } }` → **exit 0**
+  - Node **22.22.2** + npm 10.9.7 → 无任何警告，exit 0
+  - 工作区 `npm pkg get engines` → `{ "node": ">=20.9.0" }`
+- ⚠️ **性质必须说清**：`engines` 只把"Node 太低"从**完全静默**变成**安装期告警**，
+  **不拦截**（npm 默认 `engine-strict=false`，exit 仍 0，仍会继续装上"能装的部分"，
+  sharp 的平台二进制照样缺席、仍在 `require` 期才爆）。要变硬拦需 `.npmrc` 的
+  `engine-strict=true` —— **本项目未启用**（未获授权，且它会连 20.9 以下的一切
+  npm 操作一起挡住，超出本 plan 的出界清单）
+- 出界项照旧未碰：不动 `sharp` 版本、不改测试断言、不动 CI workflow（已是 `22.x`）、
+  不新建 `.nvmrc` / `.node-version`
