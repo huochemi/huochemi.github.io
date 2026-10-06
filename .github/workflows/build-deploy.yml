@@ -20,10 +20,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # sharp@0.35.4 要求 node >= 20.9.0；低版本下 npm 会静默跳过其平台二进制，
+      # 使 require('sharp') 在 CI 抛错 —— 见 docs/plans/2026-10-06-ci-red-node18-sharp-optional-skip.md
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 18.x
+          node-version: 22.x
 
       - name: Install NPM packages
         run: npm install
