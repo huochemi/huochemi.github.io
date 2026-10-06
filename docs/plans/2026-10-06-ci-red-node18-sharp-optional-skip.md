@@ -238,3 +238,14 @@ CI 侧同一机制落在 `linux-x64` 上：`@img/sharp-linux-x64`（`engines >=2
   npm 操作一起挡住，超出本 plan 的出界清单）
 - 出界项照旧未碰：不动 `sharp` 版本、不改测试断言、不动 CI workflow（已是 `22.x`）、
   不新建 `.nvmrc` / `.node-version`
+- **lockfile 无需更新（已实测）**：`package-lock.json` 的根包条目只有
+  `name` / `version` / `dependencies`（**不记录 `engines`**），故加 `engines` 后
+  lock 与 `package.json` 仍同步 —— 用隔离副本（`package.json` + `package-lock.json`）
+  跑 `npm ci --dry-run` → **exit 0、无 "in sync" 报错**；CI 现用 `npm install`
+  （`build-deploy.yml` 第 31 行），即使将来改成 `npm ci` 也不会因 `engines` 报错
+- **验收**：run `37438465022`（head `1d7e80e`）**success** —— `Install NPM packages` /
+  `Install exiftool` / `Run CLI tests` / `Build project` / `Run tests` /
+  `Deploy to gh-pages` 全部 success。注意 `gh-pages` tip **未变**（仍是
+  `deploy: ae403f1…`、线上 bundle 仍是 `main.3a37bdbc.js`）—— 这是**预期而非异常**：
+  本次改动不含 `src/` / `public/` 任何文件，构建产物与上次逐字节相同，部署内容无变化
+  故无新提交
