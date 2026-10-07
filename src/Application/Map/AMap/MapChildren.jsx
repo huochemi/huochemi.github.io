@@ -164,8 +164,8 @@ const formatDurationBadge = (duration) => {
 // 设备图标不在此函数内——SVG 是元素、无法进 join，改由 DeviceBadgeIcon 渲染
 //
 // isRef 由调用方从**组级**标记算出：参考图是 photos[] 的项，项上没有 pinKind
-// （它是点位级的属性）。参考图既没有拍摄时刻也没有设备，扩展名（refs/01.jpg）
-// 也不代表任何东西——显示「参考图」才不骗人，同时避开"渲染出一个空角标"。
+// （它是点位级的属性）。参考图既没有拍摄时刻也没有设备，文件名也不代表任何东西
+// ——显示「参考图」才不骗人，同时避开"渲染出一个空角标"。
 const thumbnailBadgeText = (photo, isRef) => {
   if (isRef) return '参考图';
 

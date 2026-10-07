@@ -38,24 +38,31 @@ const isVideoFile = (file) => VIDEO_EXTS.has(path.extname(file).toLowerCase());
 // /data 挂载到本地 data 仓库，无需先提交 data repo 即可预览
 const BASE_URL = '/data/photos';
 
-// 参考点位（"想去、还没去过"的点位，见 docs/plans/2026-10-07-ref-places.md）：
-// 点位元数据与素材同住 data 仓的一个目录，影像素材放 `refs/` 子目录。
+// 参考点位（"想去、还没去过"的点位，见 docs/plans/2026-10-07-ref-places.md、
+// 2026-10-07-ref-image-pipeline.md）：点位元数据住在 data 仓的一个目录，
+// 参考图的**源图**放原图仓的 `refs/` 子目录（与实拍原片同一条读入口），
+// 管线压出的**派生图**落在 data 仓的 `refs/` 子目录。
 //
-// **判定点唯一**：原图仓该点位目录**有没有媒体文件**决定点位处于哪个阶段——
+// **判定点唯一**：原图仓该点位目录**顶层有没有媒体文件**决定点位处于哪个阶段——
 // 有 = 实拍态（现状路径，组级坐标取封面 EXIF）；没有 = 参考态（组级坐标取
 // refs/point.json）。所以 index.json 里不需要任何"我是参考点位"的声明字段，
 // 也就不可能出现"声明与实际不符"的矛盾态。
 //
 // 参考态的全部痕迹落在 refs/ 一个目录里（**refs/ 即"参考态开关"**）：
-//   refs/point.json  {"lng": <数字>, "lat": <数字>}  ← 点位级坐标，人填，GCJ02
-//   refs/01.jpg                                      ← 参考环境照，字典序第一张即 marker 用
+//   ../photos-originals/photos/<点位>/refs/<下载的原名>.jpg   ← 源图，原样放（不压、不改名）
+//   ../data/photos/<点位>/refs/point.json   ← 点位级坐标，人填，GCJ02；可选 "cover"
+//   ../data/photos/<点位>/refs/<原名>_thumb.webp / <原名>_display.avif  ← 管线压出的派生图
+// point.json: {"lng": <数字>, "lat": <数字>, "cover"?: "<原图文件名>"}
+//   cover 指定 marker 用哪张（语义同 index.json 的 index_photo）；不填 ⇒ 字典序第一张。
 // 到现场拍完之后把照片放进原图仓同名目录并重跑本脚本，点位自动转为实拍态；
-// 收尾 `rm -rf refs/` 即可——忘了也无害：实拍态根本不读 refs/，只打一行可清理提示。
+// 收尾把**两仓**的 `refs/` 一起 `rm -rf` 即可——忘了也无害：实拍态根本不读 refs/，
+// 只打一行可清理提示。
 const REFS_SUBDIR = 'refs';
 const REF_POINT_FILE = 'point.json';
 // 参考图的图片扩展名白名单（point.json 不是图，不在此列）。
-// 格式纪律是 jpg（管线依赖的 sips 写不了 webp，见 plan 的 D6c）；此处多收几种只是
-// 为了不把用户手放的 png/webp 判成"0 张"，不做转码、不生成派生档位。
+// 这里只看"是不是参考图"，压缩与档位由管线统一负责（与实拍态同一条规则：
+// generateThumbnail / generateDisplayImage）。多收几种只是为了让用户手放的
+// png/webp 不被判成"0 张"（sharp 原生可读，不必再经 sips 转码）。
 const REF_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 // 输出给前端的阶段标记：photo = 实拍态、ref = 参考态。前端**只读**它做视觉与文案
 // 分支，判定权始终在本文件的预检（单一判定点，前端不参与判定）。
@@ -466,41 +473,61 @@ async function reportInconsistencies(dirNames) {
   const orphans = [];
   const suffixes = DERIVED_SUFFIXES;
 
-  for (const dirName of dirNames) {
-    const dirPath = path.join(IMGS_DIR, dirName);
-    let files;
+  // 收集某源目录的"源媒体基名"集合：只认给定扩展名白名单、排除派生后缀。
+  // 源媒体（配对基准）一律从原图仓取——否则形态 B 之后全部派生文件会被误报成孤儿。
+  const collectStems = async (originPath, exts) => {
+    let files = [];
     try {
-      files = await fs.readdir(dirPath);
+      files = await fs.readdir(originPath);
     } catch {
-      continue; // 该文件夹已在主流程报错，此处不重复报
+      // 原图仓缺该目录：基名为空，下面会如实报孤儿——那是真问题，不该静默
     }
-
-    // 原媒体基名集合（不带扩展名），用于与派生文件配对。
-    // 视频原片（X.mp4）也在基名集合里——它的转码版 X_web.mp4 因此不算孤儿
     const stems = new Set();
-    let originFiles = [];
-    try {
-      originFiles = await fs.readdir(path.join(ORIGIN_DIR, dirName));
-    } catch {
-      // 原图仓缺该点位目录：基名为空，下面会如实报孤儿——那是真问题，不该静默
-    }
-    for (const file of originFiles) {
-      if (
-        ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-        !isDerivedFile(file)
-      ) {
+    for (const file of files) {
+      if (exts.has(path.extname(file).toLowerCase()) && !isDerivedFile(file)) {
         stems.add(path.parse(file).name);
       }
     }
+    return stems;
+  };
 
+  // 在派生目录里找出"源基名集合里没有"的派生文件，登记为孤儿。
+  // 派生目录不存在（点位已在主流程报错 / 该点位没有 refs/）即跳过，不重复报。
+  const collectOrphans = async (derivedPath, stems, label) => {
+    let files = [];
+    try {
+      files = await fs.readdir(derivedPath);
+    } catch {
+      return;
+    }
     for (const file of files) {
       const suffix = suffixes.find((s) => file.endsWith(s));
       if (!suffix) continue;
       const stem = file.slice(0, -suffix.length);
       if (!stems.has(stem)) {
-        orphans.push({ dirName, file, fullPath: path.join(dirPath, file) });
+        orphans.push({ label, file, fullPath: path.join(derivedPath, file) });
       }
     }
+  };
+
+  for (const dirName of dirNames) {
+    const dirPath = path.join(IMGS_DIR, dirName);
+    const originDirPath = path.join(ORIGIN_DIR, dirName);
+
+    // 顶层：实拍态派生图（源媒体 = 原图仓顶层的照片/视频白名单）
+    await collectOrphans(
+      dirPath,
+      await collectStems(originDirPath, ALLOWED_EXTS),
+      dirName,
+    );
+
+    // refs/ 一层：参考态派生图（源媒体 = 原图仓 refs/ 里的参考图）。
+    // 单独多扫一个**已知**子目录，不违背"顶层媒体清单不下钻"这条前提。
+    await collectOrphans(
+      path.join(dirPath, REFS_SUBDIR),
+      await collectStems(path.join(originDirPath, REFS_SUBDIR), REF_IMAGE_EXTS),
+      `${dirName}/${REFS_SUBDIR}`,
+    );
   }
 
   console.log('\n数据一致性检查：');
@@ -515,7 +542,7 @@ async function reportInconsistencies(dirNames) {
     ),
   );
   for (const orphan of orphans) {
-    console.log(`    ${orphan.dirName}/${orphan.file}`);
+    console.log(`    ${orphan.label}/${orphan.file}`);
   }
   console.log('  💡 确认后自行清理（本脚本不删除任何文件）：');
   console.log(`    rm ${orphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
@@ -622,23 +649,29 @@ function reportDerivedStats() {
  * 登记"实拍态却还留着 refs/"的点位（只读，不删任何文件）
  *
  * 切档（参考态 → 实拍态）后 refs/ 是**上一阶段的遗留**，不影响产出——实拍态根本
- * 不读它。所以这里既不报错也不改退出码（报错会把一个完全合法的实拍态卡住），
- * 只在收尾打一行"可清理"。与"实拍态出现 index_photo 之外的脏字段"不同：
- * 那是说谎的字段，这是过期的文件。
+ * 不读它。两仓各有一处 refs/（原图仓放源图、data 仓放派生图），任何一处残留都要
+ * 一起清，故**两处都登记**。这里既不报错也不改退出码（报错会把一个完全合法的
+ * 实拍态卡住），只在收尾打一行"可清理"。与"实拍态出现 index_photo 之外的脏字段"
+ * 不同：那是说谎的字段，这是过期的文件。
  */
-async function collectStaleRefsDir(dirName, dirPath) {
-  const refsDirPath = path.join(dirPath, REFS_SUBDIR);
-  try {
-    const files = await fs.readdir(refsDirPath);
-    staleRefsDirs.push({
-      dirName,
-      refsDirPath,
-      count: files.filter((file) =>
-        REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()),
-      ).length,
-    });
-  } catch {
-    // 没有 refs/ ⇒ 正常（绝大多数点位）；读不到（权限等）也不必报——它不是产出判据
+async function collectStaleRefsDir(dirName, dirPath, originDirPath) {
+  for (const refsDirPath of [
+    path.join(originDirPath, REFS_SUBDIR),
+    path.join(dirPath, REFS_SUBDIR),
+  ]) {
+    try {
+      const files = await fs.readdir(refsDirPath);
+      staleRefsDirs.push({
+        dirName,
+        refsDirPath,
+        // 数"参考图"（源图 + 派生图），point.json 不是图、不计入
+        count: files.filter((file) =>
+          REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()),
+        ).length,
+      });
+    } catch {
+      // 没有 refs/ ⇒ 正常（绝大多数点位）；读不到（权限等）也不必报——它不是产出判据
+    }
   }
 }
 
@@ -646,8 +679,9 @@ async function collectStaleRefsDir(dirName, dirPath) {
 function reportStaleRefsDirs() {
   if (staleRefsDirs.length === 0) return;
   console.log('\n实拍态残留的参考图目录：');
-  for (const { dirName, count } of staleRefsDirs) {
-    console.log(`  ℹ️ ${dirName}：已实拍，refs/ 仍存在（${count} 张参考图）`);
+  for (const { dirName, refsDirPath, count } of staleRefsDirs) {
+    const which = refsDirPath.startsWith(ORIGIN_DIR) ? '原图仓' : 'data 仓';
+    console.log(`  ℹ️ ${dirName}（${which}）：已实拍，refs/ 仍存在（${count} 个文件）`);
   }
   console.log(
     '  💡 参考图的使命（去之前熟悉环境）已结束，确认后自行清理（本脚本不删除任何文件）：',
@@ -939,44 +973,77 @@ function missingDescriptionResult(dirName, dirPath) {
 }
 
 /**
+ * 列出被误放进 **data 仓** refs/ 的参考图源图（只读，不改任何文件）
+ *
+ * 只服务于"源图是不是放错仓了"的失败提示。撤掉 data 仓 .gitignore 的放行后，
+ * 误放进 data 仓 refs/ 的源图会被 **静默挡住**（`git status` 看不见），若只回一句
+ * "refs/ 下没有图片文件"会让人以为"我明明放了"。故预检失败时多看一眼。
+ *
+ * @param {string} dataRefsDirPath data 仓该点位 refs/ 目录
+ * @returns {Promise<string[]>} 非派生后缀的图片文件名（升序）；目录不存在时为空
+ */
+async function listMisplacedRefSources(dataRefsDirPath) {
+  try {
+    const files = await fs.readdir(dataRefsDirPath);
+    return files
+      .filter(
+        (file) =>
+          REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()) &&
+          !isDerivedFile(file),
+      )
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 参考点位（"想去、还没去过"）的文件夹级预检（只读：零写操作）
  *
  * 进入条件由调用方判定：**原图仓该点位目录没有媒体文件**、且 index.json 没有
  * index_photo。判定点唯一，不依赖任何"我是参考点位"的声明字段
  * （见 docs/plans/2026-10-07-ref-places.md 的 D1）。
  *
- * 参考态的两个必要条件，任一不满足即该点位失败（不替人猜、不做兜底）：
- *   1. `<refs>/point.json` 存在，且 lng / lat 都是**数字**（GCJ02，人填）
- *   2. `<refs>/` 下至少有一张图片（字典序第一张即 marker 用图）
+ * 源图位置（甲方案，2026-10-07 拍板）：**原图仓** refs/ 放源图，管线把压好的派生图
+ * 写进 **data 仓** refs/ —— 与实拍照片完全同一条规则（见
+ * docs/plans/2026-10-07-ref-image-pipeline.md）。源图不进 data 仓，也就永远不会被
+ * 公开仓的 .gitignore 与 Pages 配额牵住。
+ *
+ * 参考态的三个必要条件，任一不满足即该点位失败（不替人猜、不做兜底）：
+ *   1. data 仓 `<refs>/point.json` 存在，且 lng / lat 都是**数字**（GCJ02，人填）
+ *   2. **原图仓** `<refs>/` 下至少有一张源图（字典序第一张默认当封面）
+ *   3. 若 point.json 写了 cover，它必须恰是清单里的一个源图文件名
  *
  * 参考态**不允许**出现 index_photo：它此时指着一个不存在的文件，留下就是说谎的
  * 脏字段（与"宁缺毋假"同口径）⇒ 报错并提示删。**反向不报错**：实拍态还留着 refs/
  * 只是"上一阶段的遗留文件"，管线不读它，由调用方打一行可清理提示即可。
  *
  * @param {string} dirName 文件夹名
- * @param {string} dirPath data 仓该点位目录
+ * @param {string} dirPath data 仓该点位目录（index.json / refs/point.json 所在）
+ * @param {string} originDirPath 原图仓该点位目录（refs/ 源图所在）
  * @param {object} indexConfig 已解析的 index.json
  * @returns {Promise<object>} 合法时含 refImages；否则含 reason / hint
  */
-async function preflightRefPlace(dirName, dirPath, indexConfig) {
+async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
   if (typeof indexConfig.description !== 'string') {
     return missingDescriptionResult(dirName, dirPath);
   }
 
-  const refsDirPath = path.join(dirPath, REFS_SUBDIR);
+  const dataRefsDirPath = path.join(dirPath, REFS_SUBDIR);
+  const originRefsDirPath = path.join(originDirPath, REFS_SUBDIR);
 
   // 1. 点位级坐标（人工标注，GCJ02）
   let point;
   try {
     point = JSON.parse(
-      await fs.readFile(path.join(refsDirPath, REF_POINT_FILE), 'utf-8'),
+      await fs.readFile(path.join(dataRefsDirPath, REF_POINT_FILE), 'utf-8'),
     );
   } catch (err) {
     return {
       dirName,
       reason: `参考点位缺少可解析的 ${REFS_SUBDIR}/${REF_POINT_FILE}: ${err.message}`,
       hint:
-        `参考点位（原图仓还没有照片的点位）必须自带一个点位坐标：${path.join(refsDirPath, REF_POINT_FILE)}\n` +
+        `参考点位（原图仓还没有照片的点位）必须自带一个点位坐标：${path.join(dataRefsDirPath, REF_POINT_FILE)}\n` +
         '    内容形如 {"lng": 112.6, "lat": 26.8}，坐标口径 GCJ02\n' +
         '    （高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，不要用 WGS84）\n' +
         `    或整条命令重建：npm run new-place -- "${dirName}" --wish --coord "<lng,lat>"`,
@@ -988,23 +1055,19 @@ async function preflightRefPlace(dirName, dirPath, indexConfig) {
       reason: `${REFS_SUBDIR}/${REF_POINT_FILE} 的 lng / lat 必须是数字`,
       hint:
         `修正后重跑：npm run photos\n` +
-        `    做法：编辑 ${path.join(refsDirPath, REF_POINT_FILE)}，` +
+        `    做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，` +
         '写成 {"lng": 112.6, "lat": 26.8}——**不要写成字符串**（不做隐式转换）',
     };
   }
 
-  // 2. 参考环境照（point.json 不进图片清单；参考图不生成派生档位，故也不排除派生后缀之外的任何东西）
-  let refFiles;
+  // 2. 源图清单（从**原图仓**读；point.json 不是图，不在此列）
+  let refFiles = null;
   try {
-    refFiles = await fs.readdir(refsDirPath);
-  } catch (err) {
-    return {
-      dirName,
-      reason: `读取参考图目录失败: ${err.message}`,
-      hint: `确认 ${refsDirPath} 存在后重跑：npm run photos`,
-    };
+    refFiles = await fs.readdir(originRefsDirPath);
+  } catch {
+    // 原图仓 refs/ 不存在（参考态刚建立、还没放图）⇒ 走下面的"没有图片文件"分支
   }
-  const refImages = refFiles
+  const refImages = (refFiles || [])
     .filter(
       (file) =>
         REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()) &&
@@ -1012,21 +1075,55 @@ async function preflightRefPlace(dirName, dirPath, indexConfig) {
     )
     .sort();
   if (refImages.length === 0) {
+    // 错仓检测：源图误放进 data 仓 refs/。撤掉 .gitignore 放行后这类图会被静默挡住，
+    // 不主动看一眼就会给出误导性的"没放图"提示（见 D6）。
+    const misplaced = await listMisplacedRefSources(dataRefsDirPath);
+    if (misplaced.length > 0) {
+      return {
+        dirName,
+        reason:
+          `参考图放错仓了：源图应放**原图仓**，而 data 仓的 ${dataRefsDirPath} 里有 ` +
+          `${misplaced.length} 个图片文件`,
+        hint:
+          '参考图的源图与实拍原片走同一条入口（放原图仓），压缩与派生由管线负责：\n' +
+          `    mkdir -p "${originRefsDirPath}" && mv ` +
+          misplaced.map((f) => `"${path.join(dataRefsDirPath, f)}"`).join(' ') +
+          ` "${originRefsDirPath}/"\n` +
+          '    然后重跑：npm run photos',
+      };
+    }
     return {
       dirName,
       reason: `${REFS_SUBDIR}/ 下没有图片文件`,
       hint:
         '参考点位至少要有一张参考图——它是地图上可点的"入口图"：\n' +
-        `    做法：把参考图压到 ≈200-250 KB 后放进 ${refsDirPath}/，命名为 01.jpg、02.jpg …\n` +
-        '    （01.jpg 就是地图上显示的那张；压好再入库，写进历史的字节删了也回收不了）\n' +
-        '    sips -Z 1024 -s format jpeg -s formatOptions 70 <下载的图> --out ' +
-        `${path.join(refsDirPath, '01.jpg')}`,
+        `    做法：把下载的图**原样**放进原图仓 ${originRefsDirPath}/（不压、不改名）\n` +
+        '    压缩与档位由 npm run photos 负责（与实拍照片同一条规则），跑完再提交\n' +
+        `    可选：在 ${path.join(dataRefsDirPath, REF_POINT_FILE)} 里用 "cover" 指定 marker 用哪张`,
     };
+  }
+
+  // 3. 封面（可选）：point.json 的 cover 必须恰是清单里的一个源图文件名。
+  //    与实拍态 index_photo 同语义；不填 ⇒ 字典序第一张（保持默认行为）。非字符串或
+  //    不在清单里都算错误——不静默忽略、不猜（与 lng/lat 同口径）。
+  if (point.cover !== undefined) {
+    if (typeof point.cover !== 'string' || !refImages.includes(point.cover)) {
+      return {
+        dirName,
+        reason: `${REFS_SUBDIR}/${REF_POINT_FILE} 的 "cover" 不是参考图清单里的文件名`,
+        hint:
+          '修正后重跑：npm run photos\n' +
+          `    可选文件名：${refImages.join('、')}\n` +
+          `    做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，把 "cover" ` +
+          '改成其中之一（也可删掉该键，默认取字典序第一张）',
+      };
+    }
   }
 
   return {
     dirName,
     dirPath,
+    originDirPath,
     indexConfig,
     point,
     refImages,
@@ -1116,7 +1213,7 @@ async function preflightDir(dirName) {
             };
       }
       // 没有 index_photo ⇒ 参考态候选（还没去过、只有参考图的点位）
-      return preflightRefPlace(dirName, dirPath, indexConfig);
+      return preflightRefPlace(dirName, dirPath, originDirPath, indexConfig);
     }
 
     // === 以下为实拍态：逻辑与文案与改造前逐字一致 ===
@@ -1225,9 +1322,12 @@ async function preflightDir(dirName) {
 /**
  * 参考点位的构建（与 buildGroup 互斥，判定见 preflightDir）
  *
- * **零派生图**：参考图一档到底（下载来的图通常 100–300 KB，够当 120px 图钉也够当
- * Lightbox 大图），因此不引 sharp、不生成第二个档位、不新增第二条生命周期
- * （见 docs/plans/2026-10-07-ref-places.md 的 D6c）。
+ * **与实拍态同一条压缩规则**（2026-10-07 起）：源图取自 **原图仓** refs/，用既有
+ * generateThumbnail / generateDisplayImage 生成两个档位、写进 **data 仓** refs/。
+ * 由此顺带得到三件事：① 用户不必自己压（管线负责）；② 文件名保留原名
+ * （`<原名>_thumb.webp` / `<原名>_display.avif`，与实拍态同一条规则，不再编号 01/02）；
+ * ③ marker 改用 23–26 KB 的缩略图而非整张图。见
+ * docs/plans/2026-10-07-ref-image-pipeline.md。
  *
  * 输出结构与实拍态**同名同形**（lat/lng/dirName/description/references/
  * thumbnailLink/displayLink/fileName/photos），只多一个 pinKind —— 前端因此可以
@@ -1238,21 +1338,69 @@ async function preflightDir(dirName) {
  * 两者靠 pinKind 区分——这是本方案唯一要求前端参与的分支。
  *
  * photos[] 里每张参考图共享同一个点位坐标（点位级单一值，不是"每张图各自有定位"）。
+ *
+ * @param {object} params 由 preflightRefPlace 的返回值提供
+ * @returns {Promise<object>} output.json 中的一条参考态文件夹数据
  */
-function buildRefGroup({ dirName, indexConfig, point, refImages }) {
-  const photos = refImages.map((file) => {
-    const link = `${BASE_URL}/${dirName}/${REFS_SUBDIR}/${file}`;
-    return {
-      fileName: `${REFS_SUBDIR}/${file}`,
-      // 一档到底：同一张图既当图钉（浏览器缩到 120px）又当 Lightbox 大图
-      thumbnailLink: link,
-      displayLink: link,
-      lat: point.lat,
-      lng: point.lng,
-    };
-  });
+async function buildRefGroup({
+  dirName,
+  dirPath,
+  originDirPath,
+  indexConfig,
+  point,
+  refImages,
+}) {
+  const originRefsDirPath = path.join(originDirPath, REFS_SUBDIR);
+  const dataRefsDirPath = path.join(dirPath, REFS_SUBDIR);
+  await fs.mkdir(dataRefsDirPath, { recursive: true });
 
-  const cover = photos[0];
+  // 封面：point.cover 指定（预检已校验），缺省取字典序第一张（保持默认行为）
+  const coverFile = point.cover ?? refImages[0];
+
+  const photos = await Promise.all(
+    refImages.map(async (file) => {
+      const parsed = path.parse(file);
+      const thumbFileName = `${parsed.name}${THUMB_SUFFIX}`;
+      const displayFileName = `${parsed.name}${DISPLAY_SUFFIX}`;
+      const srcPath = path.join(originRefsDirPath, file);
+
+      try {
+        await generateThumbnail(
+          srcPath,
+          path.join(dataRefsDirPath, thumbFileName),
+        );
+      } catch (thumbErr) {
+        console.warn(
+          color.yellow(
+            `⚠️ 生成 ${dirName}/${REFS_SUBDIR}/${file} 缩略图失败: ${thumbErr.message}`,
+          ),
+        );
+      }
+      try {
+        await generateDisplayImage(
+          srcPath,
+          path.join(dataRefsDirPath, displayFileName),
+        );
+      } catch (displayErr) {
+        console.warn(
+          color.yellow(
+            `⚠️ 生成 ${dirName}/${REFS_SUBDIR}/${file} 展示图失败: ${displayErr.message}`,
+          ),
+        );
+      }
+
+      return {
+        fileName: file,
+        thumbnailLink: `${BASE_URL}/${dirName}/${REFS_SUBDIR}/${thumbFileName}`,
+        displayLink: `${BASE_URL}/${dirName}/${REFS_SUBDIR}/${displayFileName}`,
+        lat: point.lat,
+        lng: point.lng,
+      };
+    }),
+  );
+
+  // 预检保证 coverFile 必在清单里（cover 合法、或缺省即 photos[0]），故 find 必命中
+  const cover = photos.find((photo) => photo.fileName === coverFile);
   return {
     lat: point.lat,
     lng: point.lng,
@@ -1276,20 +1424,31 @@ function buildRefGroup({ dirName, indexConfig, point, refImages }) {
  * 元数据全部取自预检结果，不再重复读 EXIF。
  * 双根：**读原图**走 ORIGIN_DIR（由预检给出的 filePath）、**写派生图**走 IMGS_DIR
  * （dirPath）——派生图是 Pages 要发布的文件，必须落在 data 仓。
- * 参考态（refImages 存在）走 buildRefGroup，不生成任何派生图。
+ * 参考态（refImages 存在）走 buildRefGroup：同样从原图仓 refs/ 读源图、往 data 仓
+ * refs/ 写派生图，只是不读 EXIF、点位坐标取 point.json。
  * @param {object} preflight preflightDir 的返回值
  * @returns {Promise<object>} output.json 中的一条文件夹数据
  */
 async function buildGroup({
   dirName,
   dirPath,
+  originDirPath,
   indexConfig,
   coverFileName,
   images,
   point,
   refImages,
 }) {
-  if (refImages) return buildRefGroup({ dirName, indexConfig, point, refImages });
+  if (refImages) {
+    return buildRefGroup({
+      dirName,
+      dirPath,
+      originDirPath,
+      indexConfig,
+      point,
+      refImages,
+    });
+  }
 
   const photos = await Promise.all(
     images.map(async ({ file, filePath, meta }) => {
@@ -1409,8 +1568,8 @@ async function buildGroup({
   const coverStem = path.parse(coverFileName).name;
   const coverIsVideo = isVideoFile(coverFileName);
 
-  // 切档后忘了收尾的 refs/ 只登记、不报错（收尾统一提示，见 reportStaleRefsDirs）
-  await collectStaleRefsDir(dirName, dirPath);
+  // 切档后忘了收尾的 refs/ 只登记、不报错（两仓各一处，收尾统一提示，见 reportStaleRefsDirs）
+  await collectStaleRefsDir(dirName, dirPath, originDirPath);
 
   return {
     lat: cover.lat,

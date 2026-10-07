@@ -2,7 +2,8 @@
  * new-place.js — 新建点位的脚手架
  *
  * 计划文档：docs/plans/2026-10-05-new-place-scaffold.md（实拍态）、
- *          docs/plans/2026-10-07-ref-places.md（参考态与切档）
+ *          docs/plans/2026-10-07-ref-places.md（参考态与切档）、
+ *          docs/plans/2026-10-07-ref-image-pipeline.md（参考图源图进原图仓 refs/）
  *
  * 用法（在站点仓库根目录执行）：
  *   ① 实拍态（已到现场拍过照，原图仓已有该点位目录与媒体文件）：
@@ -36,10 +37,11 @@
  *         2. --coord 能解析为合法经纬度（GCJ02，见下）
  *         3. data 仓该点位尚无 index.json（已存在即硬拦，绝不覆盖）
  *         4. 原图仓该点位**尚无媒体文件**（有 ⇒ 这是实拍态，报错并指向 --cover）
- *   写入：5. 建 data 侧目录与 refs/
+ *   写入：5. 建 data 侧目录与 refs/，**同时建原图仓 `<点位>/refs/`**——源图放那儿，
+ *           让"图往哪放"在文件系统上就是明确的
  *         6. 写 index.json（只有 description——参考态不许有 index_photo）
- *         7. 写 refs/point.json（lng / lat）
- *         8. 提示放参考图的位置、压缩命令与命名规则
+ *         7. 写 refs/point.json（lng / lat；可选 cover 指定 marker 用图）
+ *         8. 提示把下载的图**原样**放进原图仓 refs/，再跑 npm run photos
  *
  * 【切档】`--cover`，且目标已存在 index.json 但处于**参考态**
  *   ⚠️ 这是本工具对"绝不覆盖人工内容"这条契约的**唯一受控例外**（2026-10-07 用户
@@ -61,9 +63,11 @@
  * 那条通道由前端做换算，参考态坐标直给高德、不换算，填错会偏移数百米。
  *
  * 双根（形态 B，2026-10-05 起）：原片在原图仓 `../photos-originals/photos`、
- * `index.json` 与派生图在 data 仓 `../data/photos`。本工具**只读原图仓**（列候选 /
- * 校验封面存在）、**只写 data 仓**，不创建原图仓目录、不碰任何媒体文件。
- * 参考图由**用户自己**下载并压缩后放进 data 仓的 refs/（本工具不代下、不代压）。
+ * `index.json` 与派生图在 data 仓 `../data/photos`。本工具对实拍态**只读原图仓**
+ * （列候选 / 校验封面存在）、**只写 data 仓**；对参考态只额外建一个**空的**
+ * `原图仓/<点位>/refs/` 目录（给你放参考图源图用），不碰任何媒体文件。
+ * 参考图的**源图**由用户自己下载后**原样**放进原图仓 refs/（本工具不代下、不代压），
+ * 压缩与档位由 `npm run photos` 负责（与实拍照片同一条规则）。
  *
  * 依赖：仅 Node 内置模块 fs / path（无外部命令，无子进程，无启动预检）
  */
@@ -89,12 +93,6 @@ const isDerivedFile = (file) => DERIVED_SUFFIXES.some((s) => file.endsWith(s));
 // 同名常量是同值副本（本项目刻意不抽共享模块），改一处必须改两处。
 const REFS_SUBDIR = 'refs';
 const REF_POINT_FILE = 'point.json';
-
-// 参考图压缩档位（D6c 于真实照片实测：1024px / q70 ≈ 235 KB，与现有展示档
-// _display.avif 的 207-229 KB 同量级）。写死在这里只是为了让提示里给出的命令
-// 与文档口径一致；本工具**不代压**、不引入 sharp。
-const REF_IMAGE_MAX_PX = 1024;
-const REF_IMAGE_QUALITY = 70;
 
 // 非 TTY（管道 / 重定向到文件）或 NO_COLOR 时不着色，避免日志混入 ANSI 转义码
 const COLOR_ENABLED =
@@ -124,7 +122,8 @@ function printUsage() {
       '说明：建 data 仓点位目录并起草 index.json。点位名同时写入 description',
       '     （展示名），要换成更短的展示名直接编辑该文件即可。',
       '     实拍态：原图仓目录与媒体须已就位；不传 --cover 会列出媒体候选清单。',
-      '     参考态：不需要原图仓目录；建完后把参考图压好放进 refs/，再跑 npm run photos。',
+      '     参考态：不需要原图仓目录；建完后把下载的图原样放进原图仓 refs/，',
+      '             再跑 npm run photos（压缩与派生图由管线负责）。',
     ].join('\n'),
   );
 }
@@ -293,7 +292,10 @@ async function tryUpgradeRefPlace(
   console.log(
     '💡 参考图与 refs/point.json 的使命（去之前熟悉环境）已结束，确认后自行清理：',
   );
-  console.log(`    rm -rf "${refsDirPath}"`);
+  // 两处 refs/ 一起清：源图在原图仓、派生图与 point.json 在 data 仓
+  console.log(
+    `    rm -rf "${refsDirPath}" "${path.join(ORIGIN_DIR, placeName, REFS_SUBDIR)}"`,
+  );
   console.log('   （忘了也无害：实拍态不读 refs/，管线只会打一行可清理提示）');
   return true;
 }
@@ -423,7 +425,7 @@ async function createWishPlace(placeName, coord) {
   }
 
   // 2. 原图仓该点位不得已有媒体文件——有就说明已去过，该走实拍态那条命令
-  const { originDirPath, mediaFiles } = await listOriginMedia(placeName);
+  const { mediaFiles } = await listOriginMedia(placeName);
   if (mediaFiles.length > 0) {
     throw new Error(
       [
@@ -437,7 +439,12 @@ async function createWishPlace(placeName, coord) {
 
   // --- 写入阶段：全部校验已通过 ---
 
+  // data 仓：refs/（point.json 与派生图的家）
   await fs.mkdir(refsDirPath, { recursive: true });
+  // 原图仓：refs/（参考图**源图**的家）——与实拍原片同一条读入口，让"图往哪放"
+  // 在文件系统上就是明确的。只建空目录，不代下、不代放任何图片。
+  const originRefsDirPath = path.join(ORIGIN_DIR, placeName, REFS_SUBDIR);
+  await fs.mkdir(originRefsDirPath, { recursive: true });
   // 参考态的 index.json **只有 description**：不许出现 index_photo
   // （它此时指着一个不存在的文件，会被管线判成说谎的脏字段）。这一点是本次
   // 相较实拍态的唯一差别，见 docs/plans/2026-10-07-ref-places.md 的 D2。
@@ -457,16 +464,18 @@ async function createWishPlace(placeName, coord) {
   console.log(`坐标：${coord.lng}, ${coord.lat}（GCJ02，直给高德、不换算）`);
   console.log(color.green(`✅ 已创建 ${indexPath}`));
   console.log(color.green(`✅ 已创建 ${pointPath}`));
+  console.log(color.green(`✅ 已创建 ${originRefsDirPath}/（放参考图源图用）`));
   console.log(
     color.yellow(
       [
         '',
         '⚠️ 下一步（两件，缺一不可）：',
-        `  1. 把参考图压好放进 ${refsDirPath}/，命名为 01.jpg、02.jpg …（01.jpg 就是地图上显示的那张）`,
-        '     参考图是你从网上找的环境照——先压到 ≈200-250 KB 再入库，',
-        '     因为写进 git 历史的字节删了也回收不了：',
-        `     sips -Z ${REF_IMAGE_MAX_PX} -s format jpeg -s formatOptions ${REF_IMAGE_QUALITY} "<下载的图>" --out "${path.join(refsDirPath, '01.jpg')}"`,
-        '  2. npm run photos（产出 output.json），再提交：../data（点位元数据 + 参考图）、本站点',
+        `  1. 把你从网上找的参考环境照**原样**放进原图仓 ${originRefsDirPath}/`,
+        '     （不压、不改名——压缩与档位由 npm run photos 负责，与实拍照片同一条规则）',
+        '     想让某张当地图上的入口图，在 refs/point.json 里加 "cover": "<该文件名>"；',
+        '     不写就是文件名排序的第一张。',
+        '  2. npm run photos（产出派生图与 output.json），再提交：' +
+          '../photos-originals（源图）、../data（派生图 + point.json）、本站点',
         '',
         '💡 去过之后：把照片放进原图仓同名目录，再跑同一条 --cover 命令即可自动切档。',
       ].join('\n'),

@@ -86,13 +86,20 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 "声明与实际不符"。参考态的痕迹全部落在一个 `refs/` 子目录里（它即"参考态开关"）：
 
 ```
-../data/photos/衡阳市-湘江公铁大桥道口/
+../photos-originals/photos/衡阳市-湘江公铁大桥道口/   ← 原图仓（私有）
+    refs/
+        2021022708_pdf-page1-image9.jpg               ← 参考图**源图**（原名，原样放）
+
+../data/photos/衡阳市-湘江公铁大桥道口/               ← data 仓（公开，Pages 服务）
     index.json      { "description": "…", "references": [ … ] }   ← 与实拍态同形
     refs/
-        point.json  { "lng": 112.6201, "lat": 26.8839 }           ← 坐标（GCJ02）
-        01.jpg                                                     ← 参考图（01 = 地图上那张）
-        02.jpg
+        point.json  { "lng": 112.6201, "lat": 26.8839, "cover": "…" }  ← 坐标（GCJ02），cover 可选
+        2021022708_pdf-page1-image9_thumb.webp        ← 管线圈钉用图（可再生）
+        2021022708_pdf-page1-image9_display.avif      ← 管线展示图（可再生）
 ```
+
+结构与实拍照片**完全一样**：源图在原图仓、派生图在 data 仓（见
+`plans/2026-10-07-ref-image-pipeline.md`）。
 
 ### 建一个参考态点位
 
@@ -100,61 +107,83 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 npm run new-place -- "<点位名>" --wish --coord "<经度>,<纬度>"
 ```
 
-建 `../data/photos/<点位名>/`（`index.json` + `refs/point.json`）。它**不建**原图仓目录
-——参考态的正当状态就是"原图仓没有它"。若原图仓已有该点位的媒体文件，它会报错并指向
-`--cover`（那是实拍态）。
+建 `../data/photos/<点位名>/`（`index.json` + `refs/point.json`）与**原图仓**同名目录下的
+一个空 `refs/`（那是给你放源图的位置，让"图往哪放"在文件系统上就是明确的）。若原图仓
+该点位**顶层**已有媒体文件，它会报错并指向 `--cover`（那是实拍态）。
 
 ⚠️ **坐标口径 GCJ02**：用高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，
 与 `cities.js` 同工具同口径。**不要**填照片 EXIF 的 WGS84——参考态坐标直给高德、
 不做换算，填错偏移约 400–700 m。境外沿用 `cities.js` 的例外（偏置只在境内生效，
 境外直接填 WGS84）。JSON 写不了注释，所以这条口径只能靠本文与命令输出承载。
 
-### 参考图：放哪、压多大
+### 参考图：放哪、谁压
 
-放 `../data/photos/<点位名>/refs/`，命名 `01.jpg` / `02.jpg` …（字典序 ⇒ `01.jpg`
-就是地图上显示的那张）。
+把从网上找的环境照**原样**放进**原图仓** `../photos-originals/photos/<点位名>/refs/`
+——不压、不改名、不写 EXIF。压缩与两个档位由 `npm run photos` 负责，与实拍照片**同一条
+规则**（`<原名>_thumb.webp` 圈钉用 + `<原名>_display.avif` 展示用），故：
 
-**入库前必须压到 ≈200–250 KB**——写进 git 历史的字节删了也回收不了：
+- 你**不需要**自己压图，也不会丢原文件名；
+- 源图不进公开仓（data 仓），`refs/` 里最终只有派生图与 `point.json`；
+- 重跑能重建派生图——源图在原图仓里存着，符合 data 仓"里面的东西都能重跑出来"。
 
+**想让某张当地图上的入口图**，在 `refs/point.json` 里加一个可选键 `cover`，值是原图
+文件名（语义同实拍态 `index.json` 的 `index_photo`）：
+
+```json
+{ "lng": 112.6201, "lat": 26.8839, "cover": "2021022708_pdf-page1-image9.jpg" }
 ```
-sips -Z 1024 -s format jpeg -s formatOptions 70 "<下载的图>" \
-  --out "../data/photos/<点位名>/refs/01.jpg"
-```
 
-档位实测（源片 6.4 MB / 5472px）：1600px/q80 = 605 KB、1280px/q72 = 365 KB、
-**1024px/q70 = 235 KB**、900px/q68 = 182 KB；对照现有派生档位 `_display.avif` 207–229 KB、
-`_thumb.webp` 23–26 KB。**一档到底**：同一张图既当图钉又当 Lightbox 大图，不生成派生档位。
+不写 `cover` ⇒ 按文件名排序取第一张。填了但不在清单里 ⇒ 报错并列出候选（不猜）。
+这一项随 `refs/` 一起在切档后删除，所以不会留下"要记得回来删的字段"。
+
+> 源图虽然进了原图仓，但它与"我拍的原片"仍由**结构**区分：原图仓点位目录**顶层** =
+> 我拍的原片（真相源）；原图仓 `refs/` = 参考图（他人作品，可从来源重下）。参考图不参与
+> 设备识别、不参与缺坐标硬拦、不参与混合来源统计，也**不写 EXIF 坐标**（不碰 `fix-gps`）。
 
 参考图是**他人作品的搬运**：来源必须以链接形式写进 `index.json` 的 `references`
 （在「ⓘ」面板显示为「参考来源」），且**不热链、不镜像**（沿用
-`plans/2026-10-05-point-references.md` 的纪律，参考图是它的临时例外）。
+`plans/2026-10-05-point-references.md` 的纪律）。
 
-### `refs/` 与 data 仓的 `.gitignore`
+### data 仓的 `.gitignore`：**不需要例外**
 
-data 仓按扩展名排除 `*.jpg` 等（本意是挡住不可再生的母片重回本仓），参考图会撞上
-这条规则，故末尾追加了一条**收窄的放行**：
+data 仓按扩展名排除 `*.jpg` / `*.HEIC` 等（本意是挡住不可再生的母片重回本仓）。走甲方案
+后，进 data 仓 `refs/` 的只有三种文件，后缀**本来就不在排除名单里**，所以**不需要任何
+放行规则**——母片闸门保持**零例外**：
 
-```
-!photos/*/refs/**
-```
+| 进 data 仓 `refs/` 的东西 | 是否被挡 |
+|---|---|
+| `<原名>_display.avif` / `<原名>_thumb.webp`（派生图） | 否，天然放行 |
+| `point.json` | 否，天然放行 |
+| 误放的 `<源图>.jpg` | **是，被挡**（正是要的） |
 
-只作用于点位目录下的 `refs/` 这一层；母片的实际落点（点位目录顶层）规则一字未改。
+> 2026-10-07 一度加过 `!photos/*/refs/**` 放行，随本方案**已撤销**（决策见
+> `plans/2026-10-07-ref-image-pipeline.md`）。
+
 复验（只读，不要求文件真实存在；**看退出码**，`check-ignore -v` 对否定规则也会打印）：
 
 ```
 cd ../data
-git check-ignore -q "photos/<任一点位>/refs/01.jpg"   # 退出码 1 ⇒ 已放行
-git check-ignore -q "photos/<任一点位>/IMG_0001.JPG"  # 退出码 0 ⇒ 仍被挡
+git check-ignore -q "photos/<任一点位>/refs/x_display.avif"  # 退出码 1 ⇒ 放行
+git check-ignore -q "photos/<任一点位>/refs/x_thumb.webp"    # 退出码 1 ⇒ 放行
+git check-ignore -q "photos/<任一点位>/refs/x.jpg"           # 退出码 0 ⇒ 被挡（源图放错了）
+git check-ignore -q "photos/<任一点位>/IMG_0001.JPG"         # 退出码 0 ⇒ 仍被挡（母片）
 ```
 
-⚠️ 该仓**没有 CI、没有 pre-commit 钩子**，这条规则是纯约定、没有机器兜底 ⇒ 写得尽量窄。
+⚠️ 该仓**没有 CI、没有 pre-commit 钩子**，规则是纯约定、没有机器兜底。源图若误放进
+data 仓 `refs/`，会被静默挡住——所以管线在参考态预检失败时会**显式报错**并给出 `mv` 命令
+（见下「失败语义」）。
 
 ### 去过之后：切档（零搬运、零删除）
 
-1. 照片放进 `../photos-originals/photos/<同名点位>/`（原图仓）
+1. 照片放进 `../photos-originals/photos/<同名点位>/`（原图仓**顶层**）
 2. `npm run new-place -- "<点位名>" --cover "<封面文件名>"` ← **你建新点位本来就要跑的那条**
 3. `npm run photos`
-4. 收尾（可选）：`rm -rf ../data/photos/<点位名>/refs/`
+4. 收尾（可选）：把**两处** `refs/` 一起删
+
+   ```
+   rm -rf ../data/photos/<点位名>/refs/ \
+          ../photos-originals/photos/<点位名>/refs/
+   ```
 
 第 2 步对参考态点位是个**受控例外**：它原本对"已存在 `index.json`"恒硬拦（绝不覆盖
 人工内容），现在对参考态**只新增 `index_photo` 一个键**——不改、不删任何既有键，
@@ -173,15 +202,20 @@ git check-ignore -q "photos/<任一点位>/IMG_0001.JPG"  # 退出码 0 ⇒ 仍�
 |---|---|
 | 参考态缺 `refs/point.json`（或 JSON 坏） | 该点位失败，hint 给出文件位置、格式与 GCJ02 口径 |
 | `lng`/`lat` 不是数字 | 失败，提示"必须是数字"、不写成字符串 |
-| `refs/` 下没有图片 | 失败，hint 给出 `sips` 压缩命令与命名规则（`point.json` 不算图） |
-| 实拍态残留 `refs/` | **不失败**，只打一行可清理提示（不改退出码） |
+| 原图仓 `refs/` 下没有源图 | 失败，hint 指向**原图仓**位置（`point.json` 不算图）。若发现源图其实躺在 data 仓 `refs/`，改报「放错仓」并给出可复制的 `mv` 命令 |
+| `point.json` 的 `cover` 不是清单里的文件名（或非字符串） | 失败，hint 列出候选文件名 |
+| 实拍态残留 `refs/` | **不失败**，只打一行可清理提示（不改退出码）；两处 `refs/` 各一行，`rm -rf` 命令覆盖两处 |
+| 源图被删/改名后留下的参考图派生图 | 数据一致性检查里以孤儿形式报出（含 `refs/` 一层），`rm` 命令可直接复制；只报告、不改退出码 |
 | data 仓有点位目录、原图仓没有，且不是合法参考态 | **整轮报错退出**（防上次搬家漏拷；原行为不变）。若该目录里有 `refs/`，会追加一条针对性提示 |
 
 ### 三条"扫描不下钻子目录"的前提（改扫描前必读）
 
 `refs/` 与管线生成区同住点位目录，靠以下事实隔离——**任何一条被改成递归都会出问题**：
 
-1. 原媒体清单来自**原图仓**（`preflightDir`），`refs/` 里就算混进图也不会被当成照片
-2. 孤儿派生文件检查只匹配 `_thumb.webp` / `_display.avif` / `_web.mp4` **后缀**、不下钻
+1. 原媒体清单来自**原图仓的顶层**（`preflightDir` 的 `fs.readdir`，不下钻），`refs/`
+   里就算混进图也不会被当成"我拍的照片"（它另由参考态分支处理）
+2. 孤儿派生文件检查只匹配 `_thumb.webp` / `_display.avif` / `_web.mp4` **后缀**；它现在
+   **额外多扫一个已知子目录**（`refs/` 一层，源图取自原图仓 refs/），但不是递归下钻——
+   所以仍不会把 `refs/` 里的东西当成顶层照片
 3. 点位扫描（`resolvePointDirs`）只列**直接子目录**，`refs/` 不会被当成一个点位
 
