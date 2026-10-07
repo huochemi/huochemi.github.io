@@ -1847,6 +1847,283 @@
     ]
   },
   {
+    "lat": 38.008941666666665,
+    "lng": 114.47654722222222,
+    "thumbnailLink": "/data/photos/石家庄站/DSC05069_thumb.webp",
+    "displayLink": "/data/photos/石家庄站/DSC05069_display.avif",
+    "fileName": "DSC05069.JPG",
+    "dirName": "石家庄站",
+    "description": "石家庄站",
+    "takenAt": "2026-10-06T18:13:40",
+    "photos": [
+      {
+        "fileName": "DSC05060.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05060_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05060_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:12:31",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05062.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05062_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05062_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:12:58",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05067.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05067_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05067_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:33",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05069.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05069_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05069_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:40",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05070.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05070_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05070_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:44",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05071.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05071_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05071_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:45",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05075.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05075_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05075_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:57",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05076.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05076_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05076_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:13:58",
+        "device": "camera",
+        "geoSource": "IMG_5861.HEIC"
+      },
+      {
+        "fileName": "DSC05078.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05078_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05078_display.avif",
+        "lat": 38.00887222222222,
+        "lng": 114.47684444444445,
+        "takenAt": "2026-10-06T18:15:40",
+        "device": "camera",
+        "geoSource": "IMG_5862.HEIC"
+      },
+      {
+        "fileName": "DSC05083.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05083_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05083_display.avif",
+        "lat": 38.00917252246497,
+        "lng": 114.47697993411201,
+        "takenAt": "2026-10-06T18:25:31",
+        "device": "camera",
+        "geoSource": "Walking 2026-10-06T112533Z.gpx"
+      },
+      {
+        "fileName": "DSC05090.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05090_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05090_display.avif",
+        "lat": 38.00925565673289,
+        "lng": 114.47713045819869,
+        "takenAt": "2026-10-06T18:26:54",
+        "device": "camera",
+        "geoSource": "Walking 2026-10-06T112533Z.gpx"
+      },
+      {
+        "fileName": "DSC05093.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05093_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05093_display.avif",
+        "lat": 38.009146837006696,
+        "lng": 114.47816400891632,
+        "takenAt": "2026-10-06T18:31:57",
+        "device": "camera",
+        "geoSource": "Walking 2026-10-06T112533Z.gpx"
+      },
+      {
+        "fileName": "DSC05097.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/DSC05097_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/DSC05097_display.avif",
+        "lat": 38.00928946836466,
+        "lng": 114.4785579606865,
+        "takenAt": "2026-10-06T18:33:49",
+        "device": "camera",
+        "geoSource": "Walking 2026-10-06T112533Z.gpx"
+      },
+      {
+        "fileName": "IMG_5858.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5858_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5858_display.avif",
+        "lat": 38.00841111111111,
+        "lng": 114.47840833333333,
+        "takenAt": "2026-10-06T18:08:15",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5859.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5859_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5859_display.avif",
+        "lat": 38.00783888888889,
+        "lng": 114.47868333333334,
+        "takenAt": "2026-10-06T18:08:21",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5860.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5860_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5860_display.avif",
+        "lat": 38.00878888888889,
+        "lng": 114.4776,
+        "takenAt": "2026-10-06T18:09:30",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5861.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5861_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5861_display.avif",
+        "lat": 38.008941666666665,
+        "lng": 114.47654722222222,
+        "takenAt": "2026-10-06T18:15:16",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5862.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5862_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5862_display.avif",
+        "lat": 38.00887222222222,
+        "lng": 114.47684444444445,
+        "takenAt": "2026-10-06T18:15:18",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5865.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5865_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5865_display.avif",
+        "lat": 38.008805555555554,
+        "lng": 114.47640277777778,
+        "takenAt": "2026-10-06T18:20:34",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5866.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5866_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5866_display.avif",
+        "lat": 38.008852777777776,
+        "lng": 114.4768,
+        "takenAt": "2026-10-06T18:21:11",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5867.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5867_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5867_display.avif",
+        "lat": 38.00888333333333,
+        "lng": 114.47681388888888,
+        "takenAt": "2026-10-06T18:21:18",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5868.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5868_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5868_display.avif",
+        "lat": 38.00888333333333,
+        "lng": 114.47681388888888,
+        "takenAt": "2026-10-06T18:21:26",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5870.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5870_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5870_display.avif",
+        "lat": 38.00886111111111,
+        "lng": 114.47873611111112,
+        "takenAt": "2026-10-06T18:35:09",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5871.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5871_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5871_display.avif",
+        "lat": 38.00886111111111,
+        "lng": 114.47873611111112,
+        "takenAt": "2026-10-06T18:35:10",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5872.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5872_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5872_display.avif",
+        "lat": 38.00886111111111,
+        "lng": 114.47873611111112,
+        "takenAt": "2026-10-06T18:35:10",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5873.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5873_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5873_display.avif",
+        "lat": 38.00886111111111,
+        "lng": 114.47873611111112,
+        "takenAt": "2026-10-06T18:35:11",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5874.JPG",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5874_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5874_display.avif",
+        "lat": 38.00886111111111,
+        "lng": 114.47873611111112,
+        "takenAt": "2026-10-06T18:35:11",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5876.HEIC",
+        "thumbnailLink": "/data/photos/石家庄站/IMG_5876_thumb.webp",
+        "displayLink": "/data/photos/石家庄站/IMG_5876_display.avif",
+        "lat": 38.00725833333333,
+        "lng": 114.47763888888889,
+        "takenAt": "2026-10-06T18:35:36",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 39.87356111111111,
     "lng": 116.20875555555556,
     "thumbnailLink": "/data/photos/石景山南站/IMG_5019_thumb.webp",
