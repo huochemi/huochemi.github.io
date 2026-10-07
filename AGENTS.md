@@ -65,11 +65,17 @@ agent 本会话自建的临时文件）。
 2. **CI 验证** → `CI=true npm run build`，由**用户终端或 CI** 执行。agent 环境跑
    **必失败**，且与 `build/` 是否预先存在**无关**（agent 不必先删 `build/`）：broker
    对"已存在目录的非递归 mkdir"伪造错误码，webpack 的 mkdirp 认不出 → 上抛
-   （机制与实测见 `docs/toolchain.md`）。副作用：跑 build 会**清空现有 `build/`**，
+   （机制与实测见 `docs/agent-env.md`）。副作用：跑 build 会**清空现有 `build/`**，
    agent 不要在用户工作区试跑
-3. **知识回写** → 新坑/新知识写入 `docs/` 对应域文件（无对应文件按域新建；单文件超
-   200 行按域拆分）；**仅当新建域文件时**，本文件"路由"才加一行，知识进既有域文件
-   时本文件不动；不预建空文件
+3. **知识回写** → 新坑/新知识写入 `docs/` 对应域文件；**没有对应域文件时按知识域
+   新建**。拆分判据是**一个文件里是否住着两个可独立命名、各自能回答一组问题的域**，
+   **不是文件行数**（行数只作提示：超 400 行时，写新内容前先自问是不是混了两个域）。
+   **仅当新建域文件时**，本文件"路由"才加一行，知识进既有域文件时本文件不动；
+   不预建空文件
+   为什么：200 行阈值是 2026-09-25 拆分 docs 时的**配套绊线**（防"什么都往里塞的
+   单体"在域文件里重建），但实战中退化成"数行数"——三次拆分都没撑过一周（实测与
+   判据见 `docs/plans/2026-10-07-docs-split-by-domain.md`）。它想防的是**域混合**，
+   故直接以域为判据
 4. **计划文件** → 完成后状态行更新为"已实现"，保留不删（P1）
 5. **门** → 门①：写代码前，plan 是否已获用户批准（P2）；门②：任何删除/覆盖/恢复，
    停下问用户（P2）
@@ -78,7 +84,11 @@ agent 本会话自建的临时文件）。
 
 - 技术栈：React 18 + react-scripts 5（CRA）、AMap（@uiw/react-amap）、GitHub Pages
 - 构建产物：`src/Application/output.json` 勿手改（由 `npm run photos` 生成）
-- 工具链坑 → `docs/toolchain.md`
+- 工具链坑（ESLint `--ext`、CI 的 Node 与 `sharp` engines、`/dev/tty`、`useMemo`、
+  `localStorage`、git 与 grep 的"静默归零"）→ `docs/toolchain.md`
+- agent 执行环境（沙箱 PATH 无 Homebrew、broker 拦 build；agent 独有现象，S2 不为它
+  改代码）→ `docs/agent-env.md`
+- 测试（CRA jest 与 CLI 单测两条链、jsdom 测内联脚本、`src` 内 CJS 可测形态）→ `docs/testing.md`
 - 照片管线（HEIC 转码、双根 `ORIGIN_DIR`/`IMGS_DIR`、缩略图与展示图档位 AVIF、视频转码）→ `docs/data-pipeline.md`
 - 照片运维（`npm run del-photo` 删除照片、数据一致性报告）→ `docs/photo-ops.md`
 - 照片元数据（GPS 硬拦口径、坐标溯源 `geoSource`、设备 `device` 分类）→ `docs/photo-metadata.md`
