@@ -15,6 +15,12 @@
 
 **相对路径是刻意的**：线上与本地共用同一套 URL，前端零环境分支。
 
+`huochemi/data` **没有** `.github/workflows`——它是 Pages 的 legacy 分支发布（Settings →
+Pages 直接指向 `main`），`git push` 即触发重建，不经过 Actions、也没有"部署 job 成功"这类
+信号可看。**新文件有边缘传播延迟**：`push` 后立刻请求新路径可能 404，约 1 分钟内转为 200
+（2026-10-07 实测：同批文件里 `index.json` 先就绪、`_thumb.webp` 后到）。⇒ 排查"图 404"
+时先用**已上线的旧点位**做对照请求，别误判成路径写错或部署失败。
+
 > 2026-10-05 形态 B 起，**原图**移出 `data` 仓、进私有存档仓 `photos-originals`；
 > 该仓**不开 Pages、不参与任何前端链接**——`/data/photos/…` 的结构与路径完全不变。
 > 详见 `docs/data-pipeline.md`「双根管线」与
