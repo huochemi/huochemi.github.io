@@ -339,6 +339,9 @@ GPSLatitude**——对已有原生 GPS 的视频再用 fix-gps 写法写不同�
   （`../data/photos/<点位>/refs/point.json`，见 `photo-ops.md`「参考点位」）与
   `cities.js` 的城市落点是**同一类数据**：来源都是高德坐标拾取器、用途都是"直给高德
   显示"，所以存它原生的 GCJ02、前端**不再**过 `convertFrom`（再转一次就是二次偏移）。
+  ⚠️ **"人手填" = 用户本人提供**：取值这个动作属于用户，agent 不得代为检索、估算、
+  或用别处坐标换算后填充（`AGENTS.md` S4，2026-10-07 定；踩坑记录见
+  `plans/2026-10-07-ref-places.md` 的同日受控修订节）。
   判据收敛成两句话：**人手填的一律 GCJ02；照片 EXIF 的一律 WGS84 并换算**。
   两者在同一个 `output.json` 里靠 `pinKind` 区分（`photo` = EXIF/WGS84、
   `ref` = 手填/GCJ02）。⇒ `pinKind` 不是装饰字段，而是**坐标通道开关**：全站唯一一处

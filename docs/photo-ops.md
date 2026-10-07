@@ -80,7 +80,7 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 | 阶段 | 原图仓 | 坐标来源 | `output.json` 里的标记 |
 |---|---|---|---|
 | 实拍态（去过） | 有媒体文件 | 封面照片的 EXIF（**WGS84**） | `pinKind: 'photo'` |
-| 参考态（还没去） | 没有媒体文件 | `refs/point.json`（人工标注，**GCJ02**） | `pinKind: 'ref'` |
+| 参考态（还没去） | 没有媒体文件 | `refs/point.json`（**用户本人提供**，**GCJ02**） | `pinKind: 'ref'` |
 
 `index.json` 里**不需要**任何"我是参考点位"的声明字段——单一判定点，永不出现
 "声明与实际不符"。参考态的痕迹全部落在一个 `refs/` 子目录里（它即"参考态开关"）：
@@ -93,7 +93,7 @@ npm run del-photo -- "<文件夹名>" "<文件名>"     # 需在站点仓库根�
 ../data/photos/衡阳市-湘江公铁大桥道口/               ← data 仓（公开，Pages 服务）
     index.json      { "description": "…", "references": [ … ] }   ← 与实拍态同形
     refs/
-        point.json  { "lng": 112.6201, "lat": 26.8839, "cover": "…" }  ← 坐标（GCJ02），cover 可选
+        point.json  { "lng": <经度>, "lat": <纬度>, "cover": "…" }   ← 坐标（你提供，GCJ02）
         2021022708_pdf-page1-image9_thumb.webp        ← 管线圈钉用图（可再生）
         2021022708_pdf-page1-image9_display.avif      ← 管线展示图（可再生）
 ```
@@ -111,10 +111,15 @@ npm run new-place -- "<点位名>" --wish --coord "<经度>,<纬度>"
 一个空 `refs/`（那是给你放源图的位置，让"图往哪放"在文件系统上就是明确的）。若原图仓
 该点位**顶层**已有媒体文件，它会报错并指向 `--cover`（那是实拍态）。
 
-⚠️ **坐标口径 GCJ02**：用高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，
-与 `cities.js` 同工具同口径。**不要**填照片 EXIF 的 WGS84——参考态坐标直给高德、
-不做换算，填错偏移约 400–700 m。境外沿用 `cities.js` 的例外（偏置只在境内生效，
-境外直接填 WGS84）。JSON 写不了注释，所以这条口径只能靠本文与命令输出承载。
+⚠️ **坐标只能由你（用户）提供，agent 不得代查、代猜**（`AGENTS.md` S4，2026-10-07 定）。
+你自己在高德坐标拾取器 https://lbs.amap.com/tools/picker 上点到**那个具体位置**，
+把弹出的坐标发给 agent，由 agent 写进 `refs/point.json`。agent 不许"我先帮你查一个"——
+哪怕查得到"这座桥在哪"，也查不到"你打算站在哪儿拍"。
+
+⚠️ **坐标口径 GCJ02**：用上面那个拾取器直接粘贴，与 `cities.js` 同工具同口径。**不要**
+填照片 EXIF 的 WGS84——参考态坐标直给高德、不做换算，填错偏移约 400–700 m。境外沿用
+`cities.js` 的例外（偏置只在境内生效，境外直接填 WGS84）。JSON 写不了注释，所以这条
+口径只能靠本文与命令输出承载。
 
 ### 参考图：放哪、谁压
 
@@ -130,7 +135,7 @@ npm run new-place -- "<点位名>" --wish --coord "<经度>,<纬度>"
 文件名（语义同实拍态 `index.json` 的 `index_photo`）：
 
 ```json
-{ "lng": 112.6201, "lat": 26.8839, "cover": "2021022708_pdf-page1-image9.jpg" }
+{ "lng": <经度>, "lat": <纬度>, "cover": "2021022708_pdf-page1-image9.jpg" }
 ```
 
 不写 `cover` ⇒ 按文件名排序取第一张。填了但不在清单里 ⇒ 报错并列出候选（不猜）。
