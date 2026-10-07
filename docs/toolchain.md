@@ -64,6 +64,25 @@ agent 侧 `which` 报 not found **≠ 未安装**。
   实测确认过（把 `mergeAnchors` 的 `<` 改成 `<=`，10 条用例全绿）。实际影响为零：
   真实 GPS 漂移下不会恰好落在 5.000000 m
 
+## 测"页面内联脚本"的行为：jsdom + `runScripts: 'dangerously'`（2026-10-07）
+
+`fix-gps-review-template.html` 是"数据注入 + 内联 `<script>` 渲染"的单文件页面。要断言
+它的**交互行为**（三态渲染、`done` 条是否绑定了事件、点不点得开、进不进 plan JSON），
+不必起浏览器，用 jsdom 即可真跑：
+
+- `new JSDOM(html, { runScripts: 'dangerously' })` 载入**注入了真实数据的**模板，页面
+  内联脚本会**真执行**；随后读 `document` 断言 DOM（见
+  `test/review-page-three-state.test.js`，8 条用例）
+- ⚠️ **必须 `runScripts: 'dangerously'`**：默认不执行内联脚本 → 页面渲染成空壳 →
+  断言全部"假通过"（这是最危险的一类坑）
+- **底图脚本不加载**：测试用的是内存构造的合成数据，不读原图仓、不需要高德 key
+  （避免把外部依赖拖进单测）
+- 与 `npm run test:cli` 同一条链（node 内置 runner + jsdom），零浏览器依赖
+- ⚠️ **jsdom 未在 `package.json` 显式声明**，由 react-scripts 的 jest-environment-jsdom
+  **传递带入**。测试里 `require('jsdom')` 失败时**明确抛错并给出补法**（`npm i -D jsdom`），
+  **不 skip**——skip 会把"环境没配好"伪装成"测试通过"（同 `test/gps-sign.test.js`
+  对 exiftool 的口径）
+
 ## 前端纯函数若想被 CLI 单测覆盖，只有"src 内 CJS"这一种形态（2026-10-06）
 
 需求：某个**前端**用的纯函数（例：`src/Application/Map/AMap/overseasTiles.js` 的

@@ -236,6 +236,21 @@ ffmpeg -c:v libx264 -crf 30 -preset medium -pix_fmt yuv420p \
   它当成"读 version 标签"→ "No file specified"）
 - 一致性检查的孤儿后缀集合含 `_web.mp4`；视频原片进基名集合，转码版不算孤儿
 
+## 轨迹文件 `.gpx` 刻意不进媒体白名单（2026-10-07）
+
+点位目录里会放 Apple Watch 导出的 `.gpx` 轨迹（供轨迹路 `fix-gps:track` 插值补坐标，见
+`photo-workflow.md`）。它**故意不加入任何 `ALLOWED_EXTS`**（`process-photos.js` /
+`fix-gps.js` / `delete-photo.js` 三处的白名单都不含它），理由：轨迹**不是媒体**——
+一旦进白名单就会变成 `output.json` 的一条 photo 条目、参与缺坐标硬拦、进派生图流程，
+全都错。
+
+- 管线另用 `TRACK_EXTS = new Set(['.gpx'])` 判断"该点位是否有轨迹"：预检失败 hint 在
+  目录含轨迹时**把轨迹路顶到最前**（先给 `npm run fix-gps:track -- <点位>`、再附锚点路，
+  两条都给——轨迹只覆盖录制时段，窗口外的照片仍需锚点，提示不互相取代）
+- 与 `fix-gps.js` 的同名常量是**同值副本**（沿用"刻意不抽共享模块"惯例），由
+  `test/geo-provenance.test.js` 锁两处同值、且断言两个 `ALLOWED_EXTS` 都不含 `.gpx`
+- 决策记录：`docs/plans/2026-10-07-gpx-coordinate-channel.md`
+
 ## 删除照片 / 数据一致性报告
 
 2026-10-05 拆出 → **`docs/photo-ops.md`**（本文件超 200 行，按 AGENTS.md 按域拆分）：

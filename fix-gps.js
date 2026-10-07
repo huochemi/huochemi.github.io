@@ -1,31 +1,51 @@
 /**
  * fix-gps.js — 交互式补 GPS 坐标工具
  *
- * 为缺失 EXIF GPS 的照片/视频从同地点参照复制坐标，写入原文件。除坐标外还会写一个
- * 溯源标记（GPSProcessingMethod：`hcm-geosource ref=<参照> date=<日期>`），让管线
- * 能在 output.json 里区分"原生坐标"与"复制坐标"；同时刻意不复制参照的
- * GPSHPositioningError（避免相机照声称拥有手机的定位精度）。
+ * 为缺失 EXIF GPS 的照片/视频补坐标，写入原文件。两条**互斥的补坐标通道**：
+ *   ① 锚点路（--anchor，默认）：从同地点**手机**照片（原生 GPS）复制坐标。手机照是
+ *      坐标提供方、相机照是接收方；判据是**设备维度**（classifyDevice），不是
+ *      "有没有坐标"——后者会把任何已补过坐标的相机照当成锚点，让两条通道互相污染
+ *      且结果与执行顺序相关。
+ *   ② 轨迹路（--track）：按拍摄时刻在轨迹文件（.gpx，Apple Watch「户外步行」导出）上插值。
+ * 两路都写同一个溯源标记（GPSProcessingMethod：`hcm-geosource mode=<anchor|gpx>
+ * ref=<参照> date=<日期>`），让管线能在 output.json 里区分"原生坐标"与"复制坐标"、
+ * 以及复制自哪条通道；同时刻意不复制参照的 GPSHPositioningError（避免相机照声称
+ * 拥有手机的定位精度）。
+ * ⚠️ EXIF 里的 `mode=` 取值仍是 `anchor|gpx`（**持久化契约，不随 CLI 改名**）：
+ *   CLI 的 `--track` 与数据里的 `mode=gpx` 是同一件事的两种称呼（一个面向人、一个面向数据）。
+ * 两条通道各有对应的 npm 脚本名（`fix-gps:anchor` / `fix-gps:track`），它们只是把
+ * `--anchor` / `--track` 预设进命令的快捷方式——**通道的判定点只有一个**：出现 `--track`
+ * 即轨迹路，否则锚点路（`--anchor` 是它的显式写法）。
+ * 计划：docs/plans/2026-10-07-gpx-coordinate-channel.md（两条通道的设计与决策）
  * 视频支持（2026-10-04）：mp4 与照片同清单、同写入命令（tagsfromfile 对 mp4
  * 原样可用）；元数据读取分叉 exiftool（exifr 读不了 mp4），详见
  * docs/plans/2026-10-04-video-mp4-support.md 与 docs/photo-metadata.md 视频小节。
  * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md
  *
- * 用法：
+ * 用法（两条通道各有 npm 脚本名；等价的裸 flag 是 --anchor / --track）：
  *   npm run fix-gps                                       全量扫描所有文件夹
- *   npm run fix-gps -- 郑州                               只处理指定文件夹
- *   npm run fix-gps -- 郑州 --target a.JPG --ref b.HEIC   手动指定目标与参照（同文件夹）
- *   npm run fix-gps -- 郑州 --target a.JPG [--yes]        指定目标，参照自动推荐；--yes 免确认
- *   npm run fix-gps -- 郑州 --ref b.HEIC --all            批量：将参照坐标写入该文件夹
+ *   npm run fix-gps:anchor -- 郑州                        锚点路：只处理指定文件夹
+ *   npm run fix-gps:anchor -- 郑州 --target a.JPG --ref b.HEIC   手动指定目标与参照（同文件夹）
+ *   npm run fix-gps:anchor -- 郑州 --target a.JPG [--yes]  指定目标，参照自动推荐；--yes 免确认
+ *   npm run fix-gps:anchor -- 郑州 --ref b.HEIC --all      批量：将参照坐标写入该文件夹
  *                                                         全部缺 GPS 的照片（非交互，命令即确认）
- *   npm run fix-gps -- 郑州 --review                      生成只读分组审阅页（多锚点文件夹，
- *                                                         页面调整分组后复制一行写入命令）
- *                                                         第 5 区为高德卫星底图，key 取自
- *                                                         .env 的 REACT_APP_AMAP_API_KEY，
- *                                                         缺失即报错退出（附解决步骤）
- *   echo '<分组计划 JSON>' | npm run fix-gps -- 郑州 --plan-stdin        读入审阅页导出的分组计划，打印分组
- *                                                         摘要，一次确认写入全部（--yes 免确认） *
+ *   npm run fix-gps:anchor -- 郑州 --review                分组审阅页（多锚点文件夹）：
+ *                                                         调整分组后复制一行写入命令。第 5 区为高德
+ *                                                         卫星底图，key 取自 .env 的
+ *                                                         REACT_APP_AMAP_API_KEY，缺失即报错退出
+ *   echo '<计划 JSON>' | npm run fix-gps -- 郑州 --plan-stdin
+ *                                                         读入审阅页导出的计划（类型由 JSON 的
+ *                                                         mode 字段判定），打印摘要、一次确认写入全部
+ *   npm run fix-gps:track -- 石家庄站                      轨迹路：按拍摄时刻在目录内的 .gpx 轨迹上
+ *                                                         插值补坐标。时区自动判定（用目录内原生手机照
+ *                                                         交叉验证）；--tz +8 / UTC+8 / +5:30 可覆盖。
+ *                                                         轨迹只覆盖录制时段：窗内的写、窗外的跳过并
+ *                                                         逐张打印（交给锚点路）
+ *   npm run fix-gps:track -- 石家庄站 --review             轨迹审阅页：高德底图 + 轨迹折线 + 落点
+ *                                                         （带序号）+ 手机锚点照；可排除某几张后复制
+ *                                                         写入命令
  * 交互键：y 确认 / n 换参照 / s 跳过 / q 退出（单键，无需回车）
- * 中断后重跑可续作：已写入 GPS 的照片不会再出现在清单里。
+ * 中断后重跑可续作：已写入 GPS 的照片不会再出现在清单里（照片级幂等，两条通道各自如此）。
  * 注：npm run photos 预检失败提示在"恰有 1 张带坐标照片"时会给出 --all 批量命令，
  * "≥2 张锚点"时会给出 --review 审阅页命令。
  * 双根（形态 B，2026-10-05 起）：原片在原图仓 `../photos-originals/photos`，
@@ -34,8 +54,10 @@
  * 计划文档：docs/plans/2026-09-26-fix-gps.md、docs/plans/2026-10-03-gps-gate-hardening.md、
  * docs/plans/2026-10-03-fix-gps-review-page.md、docs/plans/2026-10-04-fix-gps-merge-unit-test.md、
  * docs/plans/2026-10-04-data-repo-longevity.md、
- * docs/plans/2026-10-05-fix-gps-review-amap-embed.md
- * 测试：npm run test:cli（node 内置 runner，只测合并/距离两个纯函数，不碰照片）
+ * docs/plans/2026-10-05-fix-gps-review-amap-embed.md、
+ * docs/plans/2026-10-07-gpx-coordinate-channel.md
+ * 测试：npm run test:cli（node 内置 runner；测合并/距离/轨迹插值等纯函数与跨文件契约，
+ * 不碰照片、不读原图仓）
  */
 
 const fs = require('fs/promises');
@@ -59,6 +81,12 @@ const IMGS_DIR = path.join(__dirname, '../data/photos');
 // 可处理媒体：图片 + 视频（mp4）。视频与照片同口径——缺坐标的视频同样进
 // 待修复清单，fix-gps 的 tagsfromfile 写入命令对 mp4 原样可用（实测）
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
+// 轨迹文件扩展名（Apple Watch「户外步行」导出、经手机 gpx export 落到点位目录）。
+// **刻意不进 ALLOWED_EXTS**：轨迹不是媒体——进了白名单就会污染扫描语义（进待修复
+// 清单、进审阅页、进 output.json 的 photos 数组）。它只被 --track 通道单独识别。
+// 与 process-photos.js 的同名常量是同值副本（刻意不抽共享模块），由跨文件测试锁一致。
+const TRACK_EXTS = new Set(['.gpx']);
+const isTrackFile = (file) => TRACK_EXTS.has(path.extname(file).toLowerCase());
 // 派生文件名后缀（与 process-photos.js 的口径同值副本，改需同步；
 // 跨文件测试锁定一致——坐标只写原片，派生文件永不进扫描）
 const DERIVED_SUFFIXES = ['_thumb.webp', '_display.avif', '_web.mp4'];
@@ -74,6 +102,10 @@ const COORD_EPSILON = 0.001;
 const PLAN_COORD_EPSILON = 0.0001;
 // 审阅页：模板与输出位置（输出进临时目录，页面只读，绝不写照片目录）
 const REVIEW_TEMPLATE = path.join(__dirname, 'fix-gps-review-template.html');
+// 轨迹审阅页模板（--track --review）：与锚点分组页是**两个页面**——那边主体是分组决策、
+// 地图只是第 5 区；这边主体就是地图（轨迹折线 + 落点 + 手机锚点照），只做核对与排除。
+// 刻意不复用同一模板：结构差异大，硬塞会两边都别扭（与"三个 CLI 各存同值常量"同源思路）
+const TRACK_REVIEW_TEMPLATE = path.join(__dirname, 'fix-gps-track-review-template.html');
 const REVIEW_OUT_DIR = path.join(os.tmpdir(), 'hcm-fix-gps-review');
 // 同位置锚点合并的距离判据（米）：相距小于此值的锚点视为"同一处"，合并为一组。
 // 用 5 m 而非"坐标完全相同"，因为同地点隔几分钟连拍时手机 GPS 会有数米漂移；
@@ -126,10 +158,11 @@ function stripTimezoneSuffix(raw) {
 }
 
 /**
- * 读取视频的坐标 / 拍摄时间 / 溯源标记（exifr 读不了 mp4，走 exiftool）。
+ * 读取视频的坐标 / 拍摄时间 / 设备 / 溯源标记（exifr 读不了 mp4，走 exiftool）。
  * 字段口径与 process-photos.js 的 readVideoMeta 一致（两个脚本各自独立，此处复制）；
  * 拍摄时间取 Keys:CreationDate（QuickTime:CreateDate 是导出时间，不是拍摄时间）。
- * @returns {Promise<{lat?, lng?, takenAt?, geoSource?}>} 读取失败返回空对象
+ * Make / Model 一并取回：锚点池判据换成设备维度后，视频也需要判"手机 / 相机"。
+ * @returns {Promise<{lat?, lng?, takenAt?, make?, model?, geoSource?}>} 读取失败返回空对象
  */
 async function readVideoMeta(filePath) {
   try {
@@ -140,6 +173,8 @@ async function readVideoMeta(filePath) {
       '-GPSLatitude',
       '-GPSLongitude',
       '-GPSProcessingMethod',
+      '-Make',
+      '-Model',
       filePath,
     ]);
     const tags = JSON.parse(stdout)[0] || {};
@@ -148,6 +183,8 @@ async function readVideoMeta(filePath) {
       lng:
         typeof tags.GPSLongitude === 'number' ? tags.GPSLongitude : undefined,
       takenAt: normalizeExifDateTime(stripTimezoneSuffix(tags.CreationDate)),
+      make: tags.Make,
+      model: tags.Model,
       geoSource: tags.GPSProcessingMethod,
     };
   } catch {
@@ -167,23 +204,8 @@ async function ensureFfmpeg() {
   ffmpegAvailable = true;
 }
 
-/** 读取照片/视频拍摄时间（返回 null 表示缺失/解析失败） */
-async function readTakenAt(filePath) {
-  if (isVideoFile(filePath)) {
-    return (await readVideoMeta(filePath)).takenAt ?? null;
-  }
-  try {
-    const exif = await exifr.parse(filePath, {
-      pick: ['DateTimeOriginal'],
-      reviveValues: false,
-    });
-    return normalizeExifDateTime(exif?.DateTimeOriginal);
-  } catch {
-    return null;
-  }
-}
-
-/** 读取 GPS；返回 { lat, lng } 或 null */
+/** 读取 GPS；返回 { lat, lng } 或 null。写入后验证专用：独立于 readMediaMeta
+ *  （验证要换一条读取路径，避免"写错也读错"的自我印证） */
 async function readGps(filePath) {
   if (isVideoFile(filePath)) {
     const meta = await readVideoMeta(filePath);
@@ -202,8 +224,141 @@ async function readGps(filePath) {
   return null;
 }
 
-/** 扫描原图仓，返回待修复清单与按文件夹分组的参照池（原片只读，坐标才写回） */
-async function scan() {
+// ---------------------------------------------------------------------------
+// 设备分类（锚点池的判据）
+// ---------------------------------------------------------------------------
+
+// 拍摄设备分类：把 EXIF 的 Make / Model 归一为「手机 / 相机」两类枚举。
+// **这是锚点池的唯一判据**（2026-10-07 用户拍板，见 docs/plans/2026-10-07-gpx-coordinate-channel.md）：
+// 手机照是坐标提供方、相机照是接收方。此前用的是"有没有坐标"——任何被补过坐标的相机照
+// 都会充数当锚点，两条补坐标通道（锚点 / GPX）互相污染、结果还取决于执行顺序；
+// 存量 151 张"有坐标、无溯源标记"的相机照正是这样在充数。
+// 品牌表是启发式清单而非权威数据源；未命中任何一条时返回 null，调用方**立即报错退出**
+// （决策 ③ fail-early：宁可停下让人补映射，也不猜、不留 fallback）。
+// 与 process-photos.js 的同名实现是同值副本（刻意不抽共享模块），由
+// test/geo-provenance.test.js 锁两处同值 —— 改一处不同步会在那里爆。
+const PHONE_MAKES = new Set([
+  'apple',
+  'samsung',
+  'huawei',
+  'honor',
+  'xiaomi',
+  'redmi',
+  'poco',
+  'oppo',
+  'vivo',
+  'oneplus',
+  'google',
+  'realme',
+  'motorola',
+  'meizu',
+  'zte',
+  'nubia',
+  'nothing',
+  'asus',
+  'lenovo',
+  'tcl',
+  'tecno',
+  'infinix',
+]);
+
+const CAMERA_MAKES = new Set([
+  'sony',
+  'canon',
+  'nikon',
+  'fujifilm',
+  'panasonic',
+  'olympus',
+  'om digital solutions',
+  'ricoh',
+  'pentax',
+  'leica',
+  'hasselblad',
+  'sigma',
+  'dji',
+  'gopro',
+  'kodak',
+  'casio',
+]);
+
+/**
+ * 将 EXIF 的 Make / Model 归一为设备类型
+ * @param {string|undefined} make EXIF Make（厂商）
+ * @param {string|undefined} model EXIF Model（型号）
+ * @returns {'phone'|'camera'|null} 无法判定时返回 null（调用方必须硬错退出，不得降级）
+ */
+function classifyDevice(make, model) {
+  if (typeof make !== 'string' || make.trim() === '') return null;
+  const brand = make.trim().toLowerCase();
+  // SONY 既产相机又产手机（Xperia），品牌表本身无法区分，故用 Model 级特例优先判定
+  if (typeof model === 'string' && /xperia/i.test(model)) return 'phone';
+  if (CAMERA_MAKES.has(brand)) return 'camera';
+  if (PHONE_MAKES.has(brand)) return 'phone';
+  return null;
+}
+
+/**
+ * 未知设备硬错（决策 ③，用户原话："遵从 fail first/fail early 的原则，直接报错，
+ * 这样我能很早的发现问题…也就不会让代码中出现 fallback 的逻辑"）。
+ * 异常终止而非降级：未知设备无法判定能不能当锚点，任何猜测都会静默污染分组结果。
+ * @returns {'phone'|'camera'} 已识别时直接返回，未知则抛错
+ */
+function assertDeviceKnown(dirName, fileName, make, model) {
+  const device = classifyDevice(make, model);
+  if (device) return device;
+  throw new Error(
+    `未知设备：${dirName}/${fileName}\n` +
+      `  EXIF: Make="${make ?? '(缺 Make)'}" / Model="${model ?? '(缺 Model)'}"\n` +
+      '  锚点池按「设备维度」判定（只有手机照片能提供坐标），未知设备无法判定，' +
+      '故立即退出而不是猜测。\n' +
+      '  处置：\n' +
+      '    1) 在 process-photos.js 的 PHONE_MAKES / CAMERA_MAKES 里加上该品牌；' +
+      '若同一品牌既有手机又有相机（如 SONY Xperia），改为按型号加特例。\n' +
+      '    2) fix-gps.js 里有一份同值副本（刻意不抽共享模块），必须同步改；' +
+      'test/geo-provenance.test.js 会断言两处一致。\n' +
+      '    3) 重跑本命令。',
+  );
+}
+
+/**
+ * 读取一张媒体的全部判定字段（照片走 exifr 一次 parse；视频走 exiftool 一次调用）。
+ * 与 process-photos.js 的 readPhotoMeta 同口径：**同一张媒体只读一次 EXIF**。
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoTag}>}
+ *   geoTag = parseGeoTag 的结果（undefined = 原生坐标）
+ */
+async function readMediaMeta(filePath) {
+  if (isVideoFile(filePath)) {
+    const meta = await readVideoMeta(filePath);
+    return {
+      lat: meta.lat,
+      lng: meta.lng,
+      takenAt: meta.takenAt ?? null,
+      make: meta.make,
+      model: meta.model,
+      geoTag: parseGeoTag(meta.geoSource),
+    };
+  }
+  const exif = await exifr.parse(filePath, REVIEW_EXIF_OPTS).catch(() => null);
+  return {
+    lat: exif?.latitude,
+    lng: exif?.longitude,
+    takenAt: normalizeExifDateTime(exif?.DateTimeOriginal),
+    make: exif?.Make,
+    model: exif?.Model,
+    geoTag: parseGeoTag(exif?.GPSProcessingMethod),
+  };
+}
+
+/**
+ * 扫描原图仓，返回三态分类结果（原片只读，坐标才写回）：
+ *   refsByDir  = **锚点池**：设备是手机且有坐标的照片（唯一可作参照的来源）
+ *   missing    = 待补坐标（无坐标，不论设备）
+ *   doneByDir  = 已带坐标的非手机设备（既不进锚点池、也无需处理）
+ * @param {string|undefined} filterDir 指定要处理的文件夹时传入：未知设备硬错**只在本命令
+ *   实际处理的文件夹上触发**（否则改 A 点位会被 B 点位的陌生机型拦住）。不传 = 全量扫描，
+ *   任何文件夹的未知设备都硬错。
+ */
+async function scan(filterDir) {
   const entries = await fs.readdir(ORIGIN_DIR, { withFileTypes: true });
   const subDirs = entries
     .filter((e) => e.isDirectory())
@@ -212,6 +367,7 @@ async function scan() {
 
   const missing = [];
   const refsByDir = new Map();
+  const doneByDir = new Map();
 
   for (const dirName of subDirs) {
     const dirPath = path.join(ORIGIN_DIR, dirName);
@@ -220,21 +376,31 @@ async function scan() {
         ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
         !isDerivedFile(file),
     );
+    const inScope = filterDir === undefined || dirName === filterDir;
 
     for (const file of files) {
       const filePath = path.join(dirPath, file);
-      const gps = await readGps(filePath);
-      const takenAt = await readTakenAt(filePath);
-      if (gps) {
+      const meta = await readMediaMeta(filePath);
+      if (!inScope && classifyDevice(meta.make, meta.model) === null) {
+        // 本命令不处理这个文件夹 ⇒ 未知设备连硬错都不该在它身上触发：跳过，
+        // 不参与任何清单（该文件夹被单独处理时才会在此报错并要求补映射）
+        continue;
+      }
+      const device = assertDeviceKnown(dirName, file, meta.make, meta.model);
+      const entry = { dirName, fileName: file, filePath, takenAt: meta.takenAt };
+      if (meta.lat === undefined || meta.lng === undefined) {
+        missing.push(entry);
+      } else if (device === 'phone') {
         if (!refsByDir.has(dirName)) refsByDir.set(dirName, []);
-        refsByDir.get(dirName).push({ fileName: file, filePath, takenAt, ...gps });
+        refsByDir.get(dirName).push({ ...entry, lat: meta.lat, lng: meta.lng });
       } else {
-        missing.push({ dirName, fileName: file, filePath, takenAt });
+        if (!doneByDir.has(dirName)) doneByDir.set(dirName, []);
+        doneByDir.get(dirName).push(entry);
       }
     }
   }
 
-  return { subDirs, missing, refsByDir };
+  return { subDirs, missing, refsByDir, doneByDir };
 }
 
 /** 两张照片拍摄时间差的展示文案 */
@@ -437,23 +603,56 @@ function waitKey() {
 // ---------------------------------------------------------------------------
 
 // 坐标溯源标记：写进标准 EXIF 标签 GPSProcessingMethod（该标签的语义就是
-// "坐标是怎么来的"）。格式 `hcm-geosource ref=<参照文件名> date=<写入日期>`，
-// 与 process-photos.js 的 parseGeoSource() 是一对契约，改格式要两边一起改。
+// "坐标是怎么来的"）。格式：
+//   `hcm-geosource mode=<anchor|gpx> ref=<参照> date=<写入日期>`
+// 与 process-photos.js 的 parseGeoTag() 是一对持久化契约，改格式要两边一起改。
+// mode 记录坐标来自哪条补坐标通道（2026-10-07 加）：两条通道分步执行时，"这张是哪条
+// 路给的"必须事后可判别——否则混合点位无法验收、也无法按时区等口径批量回滚。
+// 取值刻意最小化：将来要细分再加，加维是向后兼容的增量（缺 mode 的老数据一律视为
+// anchor，理由见 parseGeoTag）。
 // 前缀不能省——相机会自己写这个标签（如 "GPS" / "Apple"），没有前缀无法区分
 // 原生坐标与复制坐标。
 // 选它是实测结果：exifr 能从 JPEG 与 HEIC 的 GPS 块直接读到它（同一张照片一次
 // 解析即可），而 XMP 侧的字段 exifr 读不到 HEIC 的 XMP，自定义 XMP 命名空间又
 // 需要用户级 exiftool 配置。
 const GEO_SOURCE_PREFIX = 'hcm-geosource';
+// 可写入的通道取值白名单：写错会永久留在原片的 EXIF 里（且要逐张重写才能改），
+// 故在写入端拦住拼错，不给"写进去再发愁"的机会。
+const GEO_MODES = new Set(['anchor', 'gpx']);
 
-/** 生成溯源标记值：`hcm-geosource ref=<参照文件名> date=<YYYY-MM-DD>` */
-function buildGeoSourceValue(refFileName) {
+/** 生成溯源标记值：`hcm-geosource mode=<通道> ref=<参照文件名> date=<YYYY-MM-DD>` */
+function buildGeoSourceValue(refFileName, mode) {
+  if (!GEO_MODES.has(mode)) {
+    throw new Error(
+      `内部错误：溯源通道取值非法 "${mode}"（只允许 ${[...GEO_MODES].join(' / ')}）`,
+    );
+  }
   const now = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return `${GEO_SOURCE_PREFIX} ref=${refFileName} date=${date}`;
+  return `${GEO_SOURCE_PREFIX} mode=${mode} ref=${refFileName} date=${date}`;
 }
 
+/**
+ * 写入后验证（两条通道共用）：重读坐标必须与期望值一致，否则视为失败。
+ * 走 readGps（exifr.gps）这条**独立于扫描**的读取路径，避免"写错也读错"的自我印证。
+ * 容差 COORD_EPSILON（0.001°≈111 m）只用来兜"写入根本没生效"，不做精度判定。
+ */
+async function verifyGps(target, expected) {
+  const gps = await readGps(target.filePath);
+  if (
+    !gps ||
+    Math.abs(gps.lat - expected.lat) > COORD_EPSILON ||
+    Math.abs(gps.lng - expected.lng) > COORD_EPSILON
+  ) {
+    throw new Error(
+      `写入后验证失败：${target.dirName}/${target.fileName} 的坐标与参照不一致` +
+        (gps ? `（读到 ${gps.lat}, ${gps.lng}）` : '（读不到 GPS）'),
+    );
+  }
+}
+
+/** 锚点通道：从参照（手机照片）**复制**坐标与高程，溯源标记 mode=anchor */
 async function writeGps(target, ref) {
   const args = [
     '-overwrite_original',
@@ -467,24 +666,38 @@ async function writeGps(target, ref) {
     '-GPSAltitudeRef',
     // 刻意不复制 GPSHPositioningError：它是参照照片那次定位的误差值，照搬过去等于
     // 让相机照声称拥有手机的定位精度，而真相是"同址推断"——宁缺毋假，该字段留空
-    // 溯源标记：记录参照文件名与写入日期
-    `-GPSProcessingMethod=${buildGeoSourceValue(ref.fileName)}`,
+    // 溯源标记：记录通道、参照文件名与写入日期
+    `-GPSProcessingMethod=${buildGeoSourceValue(ref.fileName, 'anchor')}`,
     target.filePath,
   ];
   await execFileAsync('exiftool', args);
+  await verifyGps(target, ref);
+}
 
-  // 写入后验证：重读坐标必须与参照一致，否则视为失败并停止全部后续写入
-  const gps = await readGps(target.filePath);
-  if (
-    !gps ||
-    Math.abs(gps.lat - ref.lat) > COORD_EPSILON ||
-    Math.abs(gps.lng - ref.lng) > COORD_EPSILON
-  ) {
-    throw new Error(
-      `写入后验证失败：${target.dirName}/${target.fileName} 的坐标与参照不一致` +
-        (gps ? `（读到 ${gps.lat}, ${gps.lng}）` : '（读不到 GPS）'),
-    );
+/**
+ * GPX 通道：把**插值算出的坐标**直接写进目标（没有可复制标签的参照文件）。
+ * 用 `-n` 写十进制数（否则 exiftool 要求 `38 deg 0' 30.28"` 那种度分秒写法），
+ * 方位标记按符号显式给出（与 EXIF 的存储契约一致：WGS84 + Ref 表符号）。
+ * 高程只在轨迹确实带 <ele>、且插值两端都有值时写（缺就不写该字段，不编造）。
+ */
+async function writeGpsFromTrack(target, point, trackFileName) {
+  const args = [
+    '-overwrite_original',
+    '-n',
+    `-GPSLatitude=${point.lat}`,
+    `-GPSLatitudeRef=${point.lat >= 0 ? 'N' : 'S'}`,
+    `-GPSLongitude=${point.lng}`,
+    `-GPSLongitudeRef=${point.lng >= 0 ? 'E' : 'W'}`,
+  ];
+  if (point.ele !== null) {
+    args.push(`-GPSAltitude=${point.ele}`, '-GPSAltitudeRef=0');
   }
+  args.push(
+    `-GPSProcessingMethod=${buildGeoSourceValue(trackFileName, 'gpx')}`,
+    target.filePath,
+  );
+  await execFileAsync('exiftool', args);
+  await verifyGps(target, point);
 }
 
 // ---------------------------------------------------------------------------
@@ -493,8 +706,9 @@ async function writeGps(target, ref) {
 
 /**
  * 解析 EXIF UNDEFINED 类型标签（如 GPSProcessingMethod）的文本值。
- * 与 process-photos.js 的同名函数保持一致（该文件未模块化，此处复制；
- * parseGeoSource 的返回值与 output.json 的 geoSource 字段是一对持久化契约）。
+ * 与 process-photos.js 的同名函数保持一致（该文件未模块化，此处复制）；
+ * parseGeoTag / parseGeoSource 的返回值与 output.json 的 geoSource 字段是一对
+ * 持久化契约。
  */
 function decodeUndefinedText(raw) {
   if (typeof raw === 'string') return raw;
@@ -513,14 +727,38 @@ function decodeUndefinedText(raw) {
 }
 
 /**
- * 从 GPSProcessingMethod 提取坐标溯源的参照文件名（`hcm-geosource ref=<参照> date=<日期>`）。
- * 无标记 → undefined（原生坐标）；有标记但解析不出参照名 → 'unknown'。
+ * 解析坐标溯源标记，得到通道与参照文件名：
+ *   `hcm-geosource mode=<anchor|gpx> ref=<参照> date=<YYYY-MM-DD>`
+ *
+ * @returns {{mode: string, ref: string}|undefined}
+ *   无标记（或标记不是本工具写的）→ undefined，即**原生坐标**；
+ *   有标记但 ref 解析不出 → ref = 'unknown'（仍是复制坐标，不能被误判为原生）。
+ *
+ * **缺 `mode=` ⇒ mode = 'anchor'**。这不是 fallback，而是**准确的历史陈述**：
+ * 溯源标记 2026-10-03（提交 236d984）引入，`mode=` 2026-10-07 才加 —— 中间写入的
+ * 全部坐标只可能来自锚点这一条通道（GPX 通道当时还不存在），且那些照片无法回填
+ * （要逐张重写原片 EXIF）。存量 63 张正是这种形态，故读侧必须承认这个历史事实。
+ *
+ * 与 process-photos.js 的同名函数是一对持久化契约，改格式要两边一起改。
  */
-function parseGeoSource(raw) {
+function parseGeoTag(raw) {
   const text = decodeUndefinedText(raw)?.trim();
   if (!text || !text.startsWith(GEO_SOURCE_PREFIX)) return undefined;
-  const match = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
-  return match ? match[1] : 'unknown';
+  const modeMatch = /\bmode=([A-Za-z_-]+)\b/.exec(text);
+  const refMatch = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
+  return {
+    mode: modeMatch ? modeMatch[1] : 'anchor',
+    ref: refMatch ? refMatch[1] : 'unknown',
+  };
+}
+
+/**
+ * 从 GPSProcessingMethod 提取坐标溯源的参照文件名（旧接口，语义保持不变：
+ * 字符串或 undefined）。它与 output.json 的 `geoSource` 字段是一对持久化契约，
+ * 故不随 `mode=` 的引入改变返回形态。
+ */
+function parseGeoSource(raw) {
+  return parseGeoTag(raw)?.ref;
 }
 
 /**
@@ -703,7 +941,15 @@ async function resolveThumbSrc(originDirPath, dataDirPath, fileName) {
   return pathToFileURL(tmpJpeg).href;
 }
 
-/** 扫描单个文件夹，返回审阅页需要的媒体元数据（只读）。照片走 exifr，视频走 exiftool */
+/**
+ * 扫描单个文件夹，返回审阅页/GPS 路需要的媒体元数据（只读）。
+ * 三态分类（判据 1，2026-10-07）：
+ *   anchor = 设备是手机**且**有坐标 —— 可作参照的坐标提供方
+ *   target = 无坐标（不论设备）—— 待补坐标
+ *   done   = 有坐标**且**设备不是手机 —— 已补过的相机照：既不进锚点池（会污染，
+ *            让另一条通道的产物反充参照），也不进待办（已修好）；页面上只读可见
+ * 未知设备在任何一条通道上都是硬错（决策 ③）。
+ */
 async function scanDirForReview(dirName) {
   const originDirPath = path.join(ORIGIN_DIR, dirName); // 媒体与 EXIF 来源
   const dataDirPath = path.join(IMGS_DIR, dirName); // 派生缩略图来源
@@ -716,33 +962,17 @@ async function scanDirForReview(dirName) {
   const photos = [];
   for (const file of files) {
     const filePath = path.join(originDirPath, file);
-    let lat;
-    let lng;
-    let time;
-    let geoSourceRaw;
-    if (isVideoFile(file)) {
-      const meta = await readVideoMeta(filePath);
-      lat = meta.lat;
-      lng = meta.lng;
-      time = meta.takenAt;
-      geoSourceRaw = meta.geoSource;
-    } else {
-      const exif = await exifr
-        .parse(filePath, REVIEW_EXIF_OPTS)
-        .catch(() => null);
-      lat = exif?.latitude;
-      lng = exif?.longitude;
-      time = normalizeExifDateTime(exif?.DateTimeOriginal);
-      geoSourceRaw = exif?.GPSProcessingMethod;
-    }
+    const meta = await readMediaMeta(filePath);
+    const device = assertDeviceKnown(dirName, file, meta.make, meta.model);
+    const hasGeo = meta.lat !== undefined && meta.lng !== undefined;
     photos.push({
       file,
-      time,
-      ts: time || '9999',
-      kind: lat !== undefined && lng !== undefined ? 'anchor' : 'camera',
-      lat: lat ?? null,
-      lng: lng ?? null,
-      geoSource: parseGeoSource(geoSourceRaw) ?? null,
+      time: meta.takenAt,
+      ts: meta.takenAt || '9999',
+      kind: !hasGeo ? 'target' : device === 'phone' ? 'anchor' : 'done',
+      lat: meta.lat ?? null,
+      lng: meta.lng ?? null,
+      geoSource: meta.geoTag?.ref ?? null,
       thumb: await resolveThumbSrc(originDirPath, dataDirPath, file),
     });
   }
@@ -762,19 +992,30 @@ async function runReview(filterDir, amapKey) {
   // 先建输出目录（HEIC 无派生缩略图时扫描阶段就要往里写临时 JPEG）
   await fs.mkdir(REVIEW_OUT_DIR, { recursive: true });
   const { photos, anchors: anchorPhotos } = await scanDirForReview(filterDir);
+  const done = photos.filter((p) => p.kind === 'done');
 
   if (anchorPhotos.length === 0) {
     console.error(
       color.red(
-        `❌ 文件夹 "${filterDir}" 内没有带 GPS 的照片（没有锚点可提供坐标），` +
-          '无法生成审阅页。可从手机导出一张当时在附近拍的照片放入该文件夹后重跑。',
+        `❌ 文件夹 "${filterDir}" 内没有**手机**照片作锚点（锚点池只收设备为手机、` +
+          '且有原生 GPS 的照片），无法生成审阅页。\n' +
+          (done.length > 0
+            ? `   该文件夹已有 ${done.length} 张相机照带坐标（属"已补过"，不作参照、不参与分组）。\n`
+            : '') +
+          '   若该点位确实还没补过坐标，可从手机导出一张当时在附近拍的照片放入该文件夹后重跑；' +
+          '若该点位有轨迹文件，改用轨迹路：npm run fix-gps:track -- "' +
+          filterDir +
+          '"',
       ),
     );
     process.exit(1);
   }
-  const cameras = photos.filter((p) => p.kind === 'camera');
-  if (cameras.length === 0) {
-    console.log('✅ 没有缺 GPS 的照片，无需处理。');
+  const targets = photos.filter((p) => p.kind === 'target');
+  if (targets.length === 0) {
+    console.log(
+      '✅ 没有缺 GPS 的照片，无需处理。' +
+        (done.length > 0 ? `（另有 ${done.length} 张相机照已带坐标）` : ''),
+    );
     return;
   }
 
@@ -827,6 +1068,12 @@ async function runReview(filterDir, amapKey) {
             : ''),
         '  页面只读、不写任何照片。在页面上调整好分组后点「复制写入命令」，',
         '  回到终端直接粘贴、回车，再按一次 y 写入全部。',
+        ...(done.length > 0
+          ? [
+              `  ℹ️ 另有 ${done.length} 张相机照已带坐标：页面里是灰色只读条——` +
+                '既不作参照也不进待办（避免另一条通道的产物反充锚点），不可点开、不可改投。',
+            ]
+          : []),
       ].join('\n'),
     ),
   );
@@ -898,8 +1145,13 @@ async function confirmBatch(prompt, yes) {
 }
 
 /**
- * 计划模式：校验计划 → 打印分组摘要 → 一次确认 → 批量写入。
+ * 计划模式（`--plan-stdin`）：校验计划 → 打印摘要 → 一次确认 → 批量写入。
  * 校验链任一失败即报错退出 1、零写入；目标已带坐标的自动跳过（幂等续作）。
+ *
+ * 两条通道共用这一个入口，**类型由计划自带的 `mode` 字段判定**（判定点唯一，不在
+ * 命令行再指定 --anchor / --track，避免两处口径）：
+ *   `mode: 'gpx'` ⇒ 转 `runTrackPlan`（轨迹计划，坐标由工具按时刻插值算出）
+ *   缺 `mode`     ⇒ 锚点计划（历史陈述：2026-10-07 之前只有锚点这一条通道）
  */
 async function runPlan(rawPlan, filterDir, yes) {
   if (!rawPlan || typeof rawPlan !== 'object' || Array.isArray(rawPlan)) {
@@ -908,6 +1160,14 @@ async function runPlan(rawPlan, filterDir, yes) {
   if (rawPlan.dir !== filterDir) {
     throw new Error(
       `计划中的文件夹 "${rawPlan.dir}" 与命令行指定的 "${filterDir}" 不一致`,
+    );
+  }
+  if (rawPlan.mode === 'gpx') {
+    return runTrackPlan(rawPlan, filterDir, yes);
+  }
+  if (rawPlan.mode !== undefined) {
+    throw new Error(
+      `计划里的 mode "${rawPlan.mode}" 无法识别（应为 'gpx'；不写 mode 表示锚点计划）`,
     );
   }
   const groups = rawPlan.groups;
@@ -1059,7 +1319,827 @@ async function runPlan(rawPlan, filterDir, yes) {
   await printSummary(writtenList.length, alreadyHasGps, writtenList);
 }
 
+/**
+ * 轨迹计划写入（计划 `mode: 'gpx'`）：校验链 → 确认 → 逐张写入。
+ * 校验链任一失败即报错退出 1、零写入；目标已带坐标的自动跳过（幂等续作）。
+ *
+ * ⚠️ 与锚点计划的关键差别：坐标**不是从参照复制来的，是工具按拍摄时刻插值算出来的**。
+ * 故"防过期"校验在这里是**重算并比对**——页面开着太久、或轨迹文件被换/被改之后写入
+ * 会得到过期坐标，重算能立刻发现（锚点路对应的是"参照的实际 EXIF 坐标与计划内一致"）。
+ *
+ * 计划形态（轨迹审阅页「复制写入命令」给出）：
+ *   { dir, mode: 'gpx', track: '<轨迹文件名>', tz: <小时>,
+ *     assignments: [{ file, lat, lng }, ...] }
+ * `assignments` **没列出的照片一律不写**——页面上的"排除"就是不把它列进来。
+ */
+async function runTrackPlan(rawPlan, filterDir, yes) {
+  const dirPath = path.join(ORIGIN_DIR, filterDir);
+  if (typeof rawPlan.track !== 'string' || !rawPlan.track) {
+    throw new Error('轨迹计划缺少 track（轨迹文件名）');
+  }
+  if (typeof rawPlan.tz !== 'number' || !Number.isFinite(rawPlan.tz)) {
+    throw new Error('轨迹计划缺少 tz（UTC 偏移小时数，可含小数）');
+  }
+  if (!Array.isArray(rawPlan.assignments) || rawPlan.assignments.length === 0) {
+    throw new Error('轨迹计划的 assignments 为空（至少需要一张要写的照片）');
+  }
 
+  const trackPath = path.join(dirPath, rawPlan.track);
+  try {
+    await fs.access(trackPath);
+  } catch {
+    throw new Error(
+      `轨迹计划的轨迹文件 "${rawPlan.track}" 不存在于文件夹 "${filterDir}"（已被移走或改名？）`,
+    );
+  }
+  const { points } = parseGpxTrack(await fs.readFile(trackPath, 'utf-8'));
+
+  const seen = new Set();
+  const resolved = [];
+  for (const a of rawPlan.assignments) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) {
+      throw new Error('轨迹计划的 assignments 含非对象项');
+    }
+    if (typeof a.file !== 'string' || !a.file) {
+      throw new Error('轨迹计划的 assignments 含空文件名');
+    }
+    if (seen.has(a.file)) {
+      throw new Error(`目标 ${a.file} 在计划中重复出现`);
+    }
+    seen.add(a.file);
+    if (typeof a.lat !== 'number' || typeof a.lng !== 'number') {
+      throw new Error(`轨迹计划项 ${a.file} 缺少 lat / lng 坐标`);
+    }
+    if (!ALLOWED_EXTS.has(path.extname(a.file).toLowerCase())) {
+      throw new Error(`目标 ${a.file} 不是可处理的媒体文件`);
+    }
+    const targetPath = path.join(dirPath, a.file);
+    try {
+      await fs.access(targetPath);
+    } catch {
+      throw new Error(`目标 "${a.file}" 不存在于文件夹 "${filterDir}"`);
+    }
+    // 防过期：按当前轨迹 + 计划时区重算，必须与计划里的坐标一致
+    const meta = await readMediaMeta(targetPath);
+    if (!meta.takenAt) {
+      throw new Error(`目标 ${a.file} 缺拍摄时间，无法按轨迹插值`);
+    }
+    const t = wallTimeToEpoch(meta.takenAt, rawPlan.tz);
+    const pos = interpolateTrack(points, t);
+    if (!pos) {
+      throw new Error(
+        `目标 ${a.file} 的拍摄时刻 ${meta.takenAt} 落在轨迹时间窗之外（轨迹或时区已变？）。` +
+          '请重新生成审阅页。',
+      );
+    }
+    if (
+      Math.abs(pos.lat - a.lat) > PLAN_COORD_EPSILON ||
+      Math.abs(pos.lng - a.lng) > PLAN_COORD_EPSILON
+    ) {
+      throw new Error(
+        `${a.file} 的重算坐标 (${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}) 与计划中的 ` +
+          `(${a.lat}, ${a.lng}) 不一致，计划可能已过期（轨迹文件被改动过？）。` +
+          '请重新生成审阅页。',
+      );
+    }
+    resolved.push({
+      target: { dirName: filterDir, fileName: a.file, filePath: targetPath },
+      time: meta.takenAt,
+      pos,
+    });
+  }
+
+  // 目标当前必须缺 GPS：已有坐标的跳过（计划生成后又跑过别的写入 → 幂等续作）
+  let alreadyHasGps = 0;
+  const pending = [];
+  for (const r of resolved) {
+    if (await readGps(r.target.filePath)) {
+      alreadyHasGps++;
+    } else {
+      pending.push(r);
+    }
+  }
+  if (pending.length === 0) {
+    console.log(`✅ 计划中的 ${alreadyHasGps} 张目标照片现在都已带坐标，无需处理。`);
+    return;
+  }
+
+  console.log('轨迹计划（来自轨迹审阅页的复制写入命令）：');
+  console.log(
+    `  轨迹 ${rawPlan.track} · ${formatUtcOffset(rawPlan.tz)} · 待写 ${pending.length} 张` +
+      (alreadyHasGps > 0 ? `（另有 ${alreadyHasGps} 张已带坐标，跳过）` : ''),
+  );
+  for (const { target, time, pos } of pending) {
+    console.log(
+      `   ${target.fileName}  ${time.slice(11, 19)}  →  ` +
+        `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`,
+    );
+  }
+
+  const confirmed = await confirmBatch(
+    color.cyan(
+      `\n将以上 ${pending.length} 张照片的坐标按轨迹写入 "${filterDir}"：` +
+        '[y] 确认  [其他键] 放弃 > ',
+    ),
+    yes,
+  );
+  if (confirmed !== true) {
+    console.log('⏹️ 已放弃，未写入。');
+    if (confirmed === null) process.exit(1);
+    return;
+  }
+
+  const writtenList = [];
+  for (const { target, pos } of pending) {
+    try {
+      await writeGpsFromTrack(target, pos, rawPlan.track);
+      console.log(color.green(`✅ 已写入并验证：${target.fileName}`));
+      writtenList.push(`${target.dirName}/${target.fileName}`);
+    } catch (err) {
+      console.error(color.red(`\n⛔ ${err.message}`));
+      console.error(color.red('已停止全部后续写入。'));
+      await printSummary(writtenList.length, alreadyHasGps, writtenList);
+      process.exit(1);
+    }
+  }
+  await printSummary(writtenList.length, alreadyHasGps, writtenList);
+}
+
+// ---------------------------------------------------------------------------
+// 轨迹路（--track）：按拍摄时刻在轨迹上插值取坐标
+// ---------------------------------------------------------------------------
+
+/**
+ * 解析 GPX 文本 → 轨迹点序列（按时间升序）。
+ *
+ * 只认 `<trkpt lat="…" lon="…"><ele>…</ele><time>…</time></trkpt>` 这种标准结构
+ * （Apple Watch「户外步行」经手机 gpx export 导出的即为此），不为它引入 XML 解析依赖。
+ * 多 `<trkseg>` 的语义定为**按时间序拼接为一条**：同一段步行被手表切成多段时物理上仍是
+ * 一条连续轨迹，分段独立会让跨段的照片无处可查。文档顺序本就非时间序时才重排，
+ * 并在返回值里标出（由调用方打印）——不静默改变语义。
+ *
+ * 时间戳是 UTC 瞬时（如 `2026-10-06T11:25:33Z`）；照片的拍摄时间是"当地墙上时间"，
+ * 换算见 wallTimeToEpoch（需要时区偏移）。
+ *
+ * @param {string} text GPX 文件内容
+ * @returns {{points: {t:number,lat:number,lng:number,ele:number|null}[], segCount:number, reordered:boolean}}
+ *   结构不合规或点数不足即抛错（fail-early：轨迹坏了要立刻知道，不能当空轨迹默默跑完）
+ */
+function parseGpxTrack(text) {
+  const segCount = (text.match(/<trkseg[\s>]/g) || []).length;
+  const points = [];
+  const trkptRe = /<trkpt\b([^>]*)>([\s\S]*?)<\/trkpt>/g;
+  let m;
+  while ((m = trkptRe.exec(text)) !== null) {
+    const lat = gpxAttr(m[1], 'lat');
+    const lng = gpxAttr(m[1], 'lon');
+    const timeMatch = /<time>\s*([^<]+?)\s*<\/time>/.exec(m[2]);
+    const t = timeMatch ? Date.parse(timeMatch[1]) : NaN;
+    if (lat === null || lng === null || Number.isNaN(t)) {
+      throw new Error(
+        '轨迹文件里有一个 <trkpt> 缺 lat / lon / time（或格式不可解析）：' +
+          `${m[0].slice(0, 120)}…`,
+      );
+    }
+    const eleMatch = /<ele>\s*([-\d.eE+]+)\s*<\/ele>/.exec(m[2]);
+    const ele = eleMatch ? Number(eleMatch[1]) : NaN;
+    points.push({ t, lat, lng, ele: Number.isFinite(ele) ? ele : null });
+  }
+  if (points.length < 2) {
+    throw new Error(
+      `轨迹点不足（解析到 ${points.length} 个），无法插值——请确认该文件是 GPX 轨迹。`,
+    );
+  }
+  let reordered = false;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].t < points[i - 1].t) {
+      reordered = true;
+      break;
+    }
+  }
+  if (reordered) points.sort((a, b) => a.t - b.t);
+  return { points, segCount, reordered };
+}
+
+/** 取 trkpt 属性里的数值（单双引号都认）；缺属性或非数字返回 null */
+function gpxAttr(attrs, name) {
+  const m = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`).exec(attrs);
+  if (!m) return null;
+  const value = Number(m[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * EXIF 的"当地墙上时间" → epoch 毫秒（与轨迹的 UTC 瞬时可比）。
+ *
+ * EXIF 不含时区，而 `Date.parse` 对无偏移的 ISO 串按**运行机器的本地时区**解释——
+ * 结果会随机器环境漂移。故显式补 `Z`、把墙上时间读成 UTC 得到"伪 epoch"，再减去时区
+ * 偏移：墙上时间 = UTC + offset ⇒ UTC = 墙上时间 − offset。
+ * （首次实现这个通道时正是栽在这里：轨点被多加 8 小时，全部照片看起来落窗外。）
+ *
+ * @param {string} wallIso 如 "2026-10-06T18:12:31"
+ * @param {number} offsetHours 拍摄地 UTC 偏移（小时，可含小数，如 +5.5）
+ * @returns {number|null} 解析失败返回 null
+ */
+function wallTimeToEpoch(wallIso, offsetHours) {
+  const wall = Date.parse(`${wallIso}Z`);
+  if (Number.isNaN(wall)) return null;
+  return wall - offsetHours * 3600000;
+}
+
+/**
+ * 在轨迹上按时刻插值取坐标（二分 + 线性）。
+ * 轨迹 1 秒采样，线性在步行尺度上足够——样条不会优于 GPS 自身 30–50 m 的噪声。
+ * 时间戳重复（同秒两点）时取前者，结果确定、不随机。
+ *
+ * @param {{t:number,lat:number,lng:number,ele:number|null}[]} points 升序轨迹点
+ * @param {number} epochMs 目标时刻
+ * @returns {{lat:number,lng:number,ele:number|null}|null} 落在轨迹时间窗之外 → null
+ */
+function interpolateTrack(points, epochMs) {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (epochMs < first.t || epochMs > last.t) return null;
+  let lo = 0;
+  let hi = points.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].t <= epochMs) lo = mid;
+    else hi = mid;
+  }
+  const a = points[lo];
+  const b = points[hi];
+  const span = b.t - a.t;
+  const r = span > 0 ? (epochMs - a.t) / span : 0;
+  return {
+    lat: a.lat + (b.lat - a.lat) * r,
+    lng: a.lng + (b.lng - a.lng) * r,
+    ele: a.ele !== null && b.ele !== null ? a.ele + (b.ele - a.ele) * r : null,
+  };
+}
+
+/**
+ * 某点位于轨迹的哪一侧（相对行进方向）：+1 左 / −1 右 / 0 无法判定。
+ * 用插值点所在区间的轨迹方向做叉积，按米制换算（经度尺度随纬度收缩，直接用度数会
+ * 让符号在近似平行时漂移）。
+ */
+function trackSide(points, epochMs, lat, lng) {
+  const pos = interpolateTrack(points, epochMs);
+  if (!pos || points.length < 2) return 0;
+  let lo = 0;
+  let hi = points.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].t <= epochMs) lo = mid;
+    else hi = mid;
+  }
+  const mPerDegLat = 111320;
+  const cosLat = Math.cos((pos.lat * Math.PI) / 180);
+  const a = points[lo];
+  const b = points[hi];
+  const dE = (b.lng - a.lng) * mPerDegLat * cosLat;
+  const dN = (b.lat - a.lat) * mPerDegLat;
+  const vE = (lng - pos.lng) * mPerDegLat * cosLat;
+  const vN = (lat - pos.lat) * mPerDegLat;
+  const cross = dE * vN - dN * vE;
+  if (cross > 0) return 1;
+  if (cross < 0) return -1;
+  return 0;
+}
+
+/**
+ * 时区自动判定：枚举整数小时偏移，取"能放进轨迹时间窗的照片最多"者；数量并列时取
+ * 平均残差（原生坐标 vs 轨迹插值点）最小者。
+ *
+ * 信噪比依据（2026-10-07 实测）：走动 0.44 m/s ⇒ 差 1 小时 ≈ 1584 m，比 GPS 噪声
+ * （30–50 m）高一个半数量级；轨迹只有 55 分钟时，错一小时会让**全部**照片落到窗外。
+ * 反过来说相机时钟偏移（秒级 ⇒ ~40 m）与噪声同量级，**不可自动标定**（决策 ④），
+ * 本函数只管时区。
+ * 刻意**不**按经度推时区（`round(lon/15)`）：中国全境统一 UTC+8，乌鲁木齐 lon 87.6°
+ * 会被推成 UTC+6 ⇒ 必然出错。
+ *
+ * @param {{time: string, lat: number, lng: number}[]} calibrators 有**原生**坐标的手机照
+ * @param {{t:number,lat:number,lng:number}[]} points 升序轨迹点
+ * @returns {{offsetHours:number, inside:number, avgResidual:number}}
+ *   inside = 落入时间窗的校准照片数；0 表示本次判定无依据（调用方必须报错退出）
+ */
+function calibrateTimezone(calibrators, points) {
+  let best = null;
+  for (let h = -12; h <= 14; h++) {
+    let inside = 0;
+    let sum = 0;
+    for (const c of calibrators) {
+      const t = wallTimeToEpoch(c.time, h);
+      const pos = t === null ? null : interpolateTrack(points, t);
+      if (!pos) continue;
+      inside++;
+      sum += haversineMeters({ lat: c.lat, lng: c.lng }, pos);
+    }
+    const avgResidual = inside > 0 ? sum / inside : Number.POSITIVE_INFINITY;
+    if (
+      best === null ||
+      inside > best.inside ||
+      (inside === best.inside && avgResidual < best.avgResidual)
+    ) {
+      best = { offsetHours: h, inside, avgResidual };
+    }
+  }
+  return best;
+}
+
+/**
+ * 疑似时区差提示：若存在某个整数小时偏移能把**全部**落空照片拉回轨迹时间窗内，返回
+ * 该偏移，否则 null。把"这些照片缺坐标"改判成"时区大概错了"——时区判错 8 小时时
+ * 所有照片都会落窗外，这是最可能的根因。
+ */
+function suggestTzOffset(missed, points, currentOffset) {
+  for (let h = -12; h <= 14; h++) {
+    if (h === currentOffset) continue;
+    let allInside = true;
+    for (const m of missed) {
+      const t = m.photo.time ? wallTimeToEpoch(m.photo.time, h) : null;
+      if (t === null || !interpolateTrack(points, t)) {
+        allInside = false;
+        break;
+      }
+    }
+    if (allInside) return h;
+  }
+  return null;
+}
+
+/** 时长（毫秒）→ "8 分 13 秒" / "42 秒" */
+function formatSpan(ms) {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  return sec >= 60 ? `${Math.floor(sec / 60)} 分 ${sec % 60} 秒` : `${sec} 秒`;
+}
+
+/** UTC 偏移（小时，可含小数）→ "UTC+8" / "UTC+5:30" */
+function formatUtcOffset(hours) {
+  const abs = Math.abs(hours);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `UTC${hours < 0 ? '-' : '+'}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
+}
+
+/** epoch → 当地墙上时间（"HH:MM:SS"，按给定 UTC 偏移）。与 EXIF 的时间口径一致 */
+function formatWallClock(epochMs, offsetHours) {
+  return new Date(epochMs + offsetHours * 3600000).toISOString().slice(11, 19);
+}
+
+/**
+ * 相机时钟的**可见性**报告（判据 3；决策 ④ 不做自动标定）。
+ * 打印原生手机照的原生坐标与轨迹插值点的残差与侧别分布：全部偏在同一侧说明轨迹或
+ * 手机定位存在系统性偏差，此时相机照的绝对误差无法从本报告里分离出来。
+ * ⚠️ 它能暴露**系统性偏差**，但**不能**直接测出相机时钟偏移——侧别只用到了手机照，
+ * 与相机时钟无关（相机时钟偏了只会让相机照沿轨迹整体平移，得靠真值才能发现）。
+ */
+function printClockVisibility(calibrators, points, offsetHours) {
+  const sides = [];
+  let sum = 0;
+  let max = 0;
+  let n = 0;
+  for (const c of calibrators) {
+    const t = c.time ? wallTimeToEpoch(c.time, offsetHours) : null;
+    if (t === null) continue;
+    const pos = interpolateTrack(points, t);
+    if (!pos) continue;
+    const d = haversineMeters({ lat: c.lat, lng: c.lng }, pos);
+    sum += d;
+    max = Math.max(max, d);
+    n++;
+    sides.push(trackSide(points, t, c.lat, c.lng));
+  }
+  if (n === 0) return;
+  const left = sides.filter((s) => s > 0).length;
+  const right = sides.filter((s) => s < 0).length;
+  console.log(
+    color.dim(
+      `\nℹ️ 时钟可见性：${n} 张原生手机照的原生坐标与轨迹插值点平均相距 ` +
+        `${Math.round(sum / n)} m（最大 ${Math.round(max)} m）；侧别 ${left} 左 / ${right} 右`,
+    ),
+  );
+  if (n >= 2 && (left === 0 || right === 0)) {
+    console.log(
+      color.dim(
+        '   ⚠️ 全部偏向轨迹同一侧 ⇒ 轨迹或手机定位存在系统性偏差，' +
+          '相机照的绝对误差无法从本报告分离出来',
+      ),
+    );
+  }
+  console.log(
+    color.dim(
+      '   相机时钟偏移无法自动标定（本工具不做）：相机时间不准会让相机照的坐标' +
+        '整体沿轨迹平移。出门前把相机时间对准手机（分钟级）即可把残余误差压到噪声量级。',
+    ),
+  );
+}
+
+/**
+ * 轨迹路（`--track`）：扫目录 → 找轨迹 → 校时区 → 逐张插值 → 两条分支：
+ *   ① 终端报告（`--track`，无 amapKey）→ 确认 → 写入；
+ *   ② 轨迹审阅页（`--track --review`，有 amapKey）→ 渲染页面、**不写任何文件**，
+ *      用户在页面上核对（并排除某几张）后复制写入命令，经 --plan-stdin 回来写入。
+ *
+ * **能补就补**（2026-10-07 修订）：窗内的写、窗外的逐张打印后跳过，**不整体失败**——
+ * 轨迹只覆盖"按下记录"之后的时段，窗口外是日常现象（手表晚按几分钟就开始拍），不是错误。
+ * 这与锚点路"部分目标已带坐标就跳过那些、写其余"（runPlan）保持一致；也正因如此，
+ * "窗内走轨迹、窗外走锚点"能在同一目录上先后跑完，无需手工挪文件。
+ *
+ * 与锚点路的边界（判据 4）：排他粒度是**照片级**——已带坐标的照片（含锚点路刚写完的）
+ * 直接跳过并显式打印张数，同一张照片不会被两条通道各写一次。同一点位内两路并用是
+ * **合法状态**（轨迹只覆盖录制时段，窗口外只能借锚点），两条通道靠 EXIF 的 `mode=` 区分。
+ *
+ * ⚠️ 安全性依据：本函数**没有**"整批闸门"，时区判错完全由**时区判据自己**拦——
+ *   ① calibrators（原生手机照）为空 → 报错要求显式 --tz；
+ *   ② 枚举整小时偏移里没有任何一个能放进哪怕一张手机照 → 报错；
+ *   ③ 全落窗外且存在某偏移能把它们全拉回窗内 → 打印"疑似时区差 N 小时"。
+ *   这三条的判据是"手机照能否落窗内"，才是时区正确性的证据；而"有些 target 落窗外"
+ *   **不是**（手表晚按、拍完才结束记录都会造成窗外 target），故不再拿它当第二道闸门。
+ *
+ * @param {string} dirName 目标文件夹
+ * @param {{tz?: number, yes?: boolean, amapKey?: string}} options
+ *   tz = `--tz` 覆盖值（小时）；yes = 免确认；amapKey 非空 ⇒ 出审阅页（**不写入**）
+ */
+async function runTrack(dirName, { tz, yes, amapKey }) {
+  const dirPath = path.join(ORIGIN_DIR, dirName);
+  const { photos } = await scanDirForReview(dirName);
+
+  const targets = photos.filter((p) => p.kind === 'target');
+  const done = photos.filter((p) => p.kind === 'done');
+  // 校准只用**原生**坐标的手机照：已被补过坐标的手机照不是原生（拿它校准是自己证明自己）
+  const calibrators = photos.filter((p) => p.kind === 'anchor' && !p.geoSource);
+
+  const trackFiles = (await fs.readdir(dirPath)).filter(isTrackFile);
+  if (trackFiles.length === 0) {
+    throw new Error(
+      `文件夹 "${dirName}" 内没有轨迹文件（${[...TRACK_EXTS].join(' / ')}）。\n` +
+        '  轨迹来自 Apple Watch「户外步行」记录 → 手机 gpx export 导出 → 放进该点位目录。\n' +
+        `  若该点位本来就没有轨迹，请改用锚点路：npm run fix-gps:anchor -- "${dirName}" --review`,
+    );
+  }
+  if (trackFiles.length > 1) {
+    throw new Error(
+      `文件夹 "${dirName}" 内有 ${trackFiles.length} 个轨迹文件：${trackFiles.join('、')}。\n` +
+        '  本工具不替你猜用哪一条（多轨迹合并是后续议题）。' +
+        '请只保留本次拍摄那一条、其余移出目录后重跑。',
+    );
+  }
+
+  const trackFileName = trackFiles[0];
+  const { points, segCount, reordered } = parseGpxTrack(
+    await fs.readFile(path.join(dirPath, trackFileName), 'utf-8'),
+  );
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  let distance = 0;
+  for (let i = 1; i < points.length; i++) {
+    distance += haversineMeters(points[i - 1], points[i]);
+  }
+
+  console.log('\n=== fix-gps --track：按轨迹插值补坐标 ===');
+  console.log(`文件夹: ${dirName}`);
+  console.log(
+    `轨迹: ${trackFileName}（${segCount} 段 / ${points.length} 点 / ` +
+      `总里程 ${Math.round(distance)} m，平均间隔 ${formatSpan((lastPoint.t - firstPoint.t) / (points.length - 1))}）`,
+  );
+  if (reordered) {
+    console.log(
+      color.dim('ℹ️ 该轨迹的多段在文档顺序上不是时间序，已按时间升序拼接为一条'),
+    );
+  }
+
+  // 时区：显式 --tz 优先；否则自动判定（判定无依据时报错要求显式指定，不静默推导）
+  let offsetHours = tz;
+  let offsetSource = 'tz'; // 'tz'（--tz 显式指定）| 'auto'（按原生手机照自动判定）
+  let calibration = null; // 自动判定时 = calibrateTimezone 结果（审阅页要展示判定依据）
+  if (offsetHours === undefined) {
+    if (calibrators.length === 0) {
+      throw new Error(
+        `文件夹 "${dirName}" 内没有**原生坐标的手机照**，无法自动校准时区。\n` +
+          '  时区差一小时 ≈ 1584 m（步行速度）——猜时区等于把整批坐标写偏，故不猜。\n' +
+          `  处置：显式指定，如 npm run fix-gps:track -- "${dirName}" --tz +8`,
+      );
+    }
+    const best = calibrateTimezone(calibrators, points);
+    if (best.inside === 0) {
+      throw new Error(
+        `时区自动判定失败：UTC-12 ~ UTC+14 的整数小时偏移里，没有任何一个能把手机照` +
+          '放进轨迹时间窗。\n' +
+          '  可能原因：轨迹与照片不是同一天/同一时段；或是**半小时时区**（如 UTC+5:30）。\n' +
+          `  处置：显式指定，如 npm run fix-gps:track -- "${dirName}" --tz +8（支持 --tz +5:30 写法）；` +
+          '若确实不同时段，请改用锚点路。',
+      );
+    }
+    offsetHours = best.offsetHours;
+    offsetSource = 'auto';
+    calibration = best;
+    console.log(
+      `时区: ${formatUtcOffset(offsetHours)}（按 ${calibrators.length} 张原生手机照交叉验证：` +
+        `${best.inside}/${calibrators.length} 张落入轨迹时间窗，平均残差 ` +
+        `${Math.round(best.avgResidual)} m）`,
+    );
+  } else {
+    console.log(`时区: ${formatUtcOffset(offsetHours)}（--tz 显式指定，未做自动校验）`);
+  }
+  console.log(
+    `  时间窗 ${formatWallClock(firstPoint.t, offsetHours)} → ` +
+      `${formatWallClock(lastPoint.t, offsetHours)}（墙上时间，跨度 ` +
+      `${formatSpan(lastPoint.t - firstPoint.t)}）`,
+  );
+
+  // 逐张插值（"能补就补"，2026-10-07 修订）：窗内的进 plans、窗外的进 missed。
+  // 不再"任一张落空即整体失败"——窗外是日常现象（手表晚按几分钟才开始记录），
+  // 且锚点路（runPlan）本来就是"部分目标不适用就跳过那些、写其余"，两条通道口径一致。
+  const plans = [];
+  const missed = [];
+  for (const p of targets) {
+    const t = p.time ? wallTimeToEpoch(p.time, offsetHours) : null;
+    const pos = t === null ? null : interpolateTrack(points, t);
+    if (!pos) {
+      missed.push({ photo: p, t });
+      continue;
+    }
+    plans.push({
+      target: { dirName, fileName: p.file, filePath: path.join(dirPath, p.file) },
+      time: p.time,
+      t,
+      pos,
+    });
+  }
+
+  if (missed.length > 0) {
+    console.log(
+      color.yellow(
+        `\n⏭️ ${missed.length}/${targets.length} 张照片落在这条轨迹的时间窗之外，` +
+          '本轮跳过（能补的就补，其余交给锚点路）：',
+      ),
+    );
+    for (const { photo, t } of missed) {
+      const when = t === null
+        ? `${photo.time || '时间未知'}（缺拍摄时间，无法插值）`
+        : `${photo.time.slice(11, 19)}（${t < firstPoint.t
+            ? `早于轨迹起点 ${formatSpan(firstPoint.t - t)}`
+            : `晚于轨迹终点 ${formatSpan(t - lastPoint.t)}`}）`;
+      console.log(`   ${photo.file}  ${when}`);
+    }
+    const hint = suggestTzOffset(missed, points, offsetHours);
+    if (hint !== null) {
+      console.log(
+        color.yellow(
+          `⚠️ 疑似时区差：把偏移改成 ${formatUtcOffset(hint)} 后，这些照片会落进轨迹时间窗` +
+            '（时区判错 8 小时时正是这个现象）。若确实是时区问题，加 --tz 重跑。',
+        ),
+      );
+    }
+    console.log(
+      color.dim(
+        '   轨迹只覆盖"按下记录"之后的时段。窗口外的照片交给锚点路：' +
+          `npm run fix-gps:anchor -- "${dirName}" --review（两条通道可按照片共用，` +
+          '已写入的照片会被照片级幂等跳过）。',
+      ),
+    );
+  }
+
+  // ── 轨迹审阅页（--track --review）────────────────────────────────────────
+  // 只渲染页面、**不写任何文件**：用户在页面上核对每张照片绑到了轨迹的哪个位置、
+  // 排除不想要的后复制写入命令（经 --plan-stdin 回来写入）。
+  if (amapKey !== undefined) {
+    return renderTrackReviewPage({
+      dirName,
+      amapKey,
+      trackFileName,
+      points,
+      segCount,
+      reordered,
+      distance,
+      offsetHours,
+      offsetSource,
+      calibration,
+      calibrators,
+      firstPoint,
+      lastPoint,
+      targets,
+      done,
+      photos,
+      plans,
+      missed,
+    });
+  }
+
+  if (plans.length === 0) {
+    if (missed.length > 0) {
+      // 全落窗外：不是"无事可做"，而是"这条轨迹覆盖不到这批照片"——报错退出，
+      // 免得退出码 0 让人误以为已经补好了
+      console.error(
+        color.red(
+          `\n⛔ 待补的 ${targets.length} 张照片全部落在轨迹时间窗之外，本轮一张未写。`,
+        ),
+      );
+      console.error(
+        color.dim('   请按上面的提示走锚点路，或先确认时区是否判错。'),
+      );
+      process.exit(1);
+    }
+    console.log(
+      `✅ 没有需要补坐标的照片，无需处理。` +
+        (done.length > 0 ? `（${done.length} 张已带坐标，本通道跳过）` : ''),
+    );
+    return;
+  }
+
+  console.log(
+    `\n待写入 ${plans.length} 张` +
+      (done.length > 0
+        ? `（另有 ${done.length} 张已带坐标，按照片级幂等跳过）`
+        : '') +
+      '：',
+  );
+  for (const { target, time, t, pos } of plans) {
+    console.log(
+      `   ${target.fileName}  ${time ? time.slice(11, 19) : '时间未知'}  →  ` +
+        `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}` +
+        `（距轨迹起点 ${formatSpan(t - firstPoint.t)}）` +
+        (pos.ele !== null ? `  高程 ${pos.ele.toFixed(1)} m` : ''),
+    );
+  }
+  printClockVisibility(calibrators, points, offsetHours);
+
+  const confirmed = await confirmBatch(
+    color.cyan(
+      `\n将以上 ${plans.length} 张照片的坐标按轨迹写入 "${dirName}"：` +
+        '[y] 确认  [其他键] 放弃 > ',
+    ),
+    yes,
+  );
+  if (confirmed !== true) {
+    console.log('⏹️ 已放弃，未写入。');
+    if (confirmed === null) process.exit(1);
+    return;
+  }
+
+  const writtenList = [];
+  for (const { target, pos } of plans) {
+    try {
+      await writeGpsFromTrack(target, pos, trackFileName);
+      console.log(color.green(`✅ 已写入并验证：${target.fileName}`));
+      writtenList.push(`${dirName}/${target.fileName}`);
+    } catch (err) {
+      console.error(color.red(`\n⛔ ${err.message}`));
+      console.error(color.red('已停止全部后续写入。'));
+      await printSummary(writtenList.length, done.length, writtenList);
+      process.exit(1);
+    }
+  }
+  await printSummary(writtenList.length, done.length, writtenList);
+  if (missed.length > 0) {
+    // 收尾重申一次（上面那批 ⏭️ 明细在"待写入"清单之前，容易被滚屏带走）：
+    // "能补就补"的下一步就是把窗外这些交给锚点路，这里给出可直接复制的一行
+    console.log(
+      color.yellow(
+        `⏭️ 另有 ${missed.length} 张落在轨迹时间窗之外，本通道未写。交给锚点路：`,
+      ),
+    );
+    console.log(
+      color.dim(`   npm run fix-gps:anchor -- "${dirName}" --review`),
+    );
+  }
+}
+
+/**
+ * 渲染轨迹审阅页（`--track --review`）并打开浏览器。**纯只读**：不碰任何原片。
+ *
+ * 页面画三样东西：
+ *   ① 轨迹折线（GPX）
+ *   ② 相机照的插值落点——**按拍摄时间编号并连线**
+ *   ③ 手机锚点照的原生坐标——唯一的外部真值
+ *
+ * ⚠️ 相机照的点**必然落在轨迹线上**（坐标就是按时刻插值算出来的），所以"点有没有
+ * 在线里"看不出绑错。真正的校验信号是**顺序**（连线往回跳 = 相机时钟错乱/EXIF 时间
+ * 被改）与**与手机锚点照的相对位置**（整批偏在一侧 = 轨迹或定位的系统性偏差）。
+ * 故编号与连线是必要的，不是装饰。
+ *
+ * @param {object} ctx runTrack 传进来的一整套中间量（轨迹/时区/落点/锚点/跳过）
+ */
+async function renderTrackReviewPage(ctx) {
+  const {
+    dirName,
+    amapKey,
+    trackFileName,
+    points,
+    segCount,
+    reordered,
+    distance,
+    offsetHours,
+    offsetSource,
+    calibration,
+    calibrators,
+    firstPoint,
+    lastPoint,
+    done,
+    photos,
+    plans,
+    missed,
+  } = ctx;
+
+  const thumbByFile = new Map(photos.map((p) => [p.file, p.thumb]));
+  const gcj = (lat, lng) => {
+    const g = wgs84ToGcj02(lat, lng);
+    return [Number(g.lng.toFixed(6)), Number(g.lat.toFixed(6))];
+  };
+
+  const data = {
+    dir: dirName,
+    generatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    amapKey,
+    track: {
+      file: trackFileName,
+      segCount,
+      pointCount: points.length,
+      distance: Math.round(distance),
+      reordered,
+      startWall: formatWallClock(firstPoint.t, offsetHours),
+      endWall: formatWallClock(lastPoint.t, offsetHours),
+      span: formatSpan(lastPoint.t - firstPoint.t),
+    },
+    tz: {
+      hours: offsetHours, // 写入计划用（页面把它原样写回 plan.tz）
+      label: formatUtcOffset(offsetHours),
+      source: offsetSource, // 'tz'（显式）| 'auto'（按原生手机照自动判定）
+      calibratorCount: calibrators.length,
+      inside: calibration ? calibration.inside : null,
+      avgResidual: calibration ? Math.round(calibration.avgResidual) : null,
+    },
+    // 轨迹折线 [[lng, lat], ...]（GCJ02，高德底图用）
+    trackLine: points.map((p) => gcj(p.lat, p.lng)),
+    // 待写入的落点（页面上可逐张排除）
+    plans: plans.map((pl, i) => {
+      const [lng, lat] = gcj(pl.pos.lat, pl.pos.lng);
+      return {
+        seq: i + 1,
+        file: pl.target.fileName,
+        time: pl.time,
+        lat: pl.pos.lat,
+        lng: pl.pos.lng,
+        gcjLat: lat,
+        gcjLng: lng,
+        ele: pl.pos.ele,
+        offsetFromStart: formatSpan(pl.t - firstPoint.t),
+        thumb: thumbByFile.get(pl.target.fileName) || null,
+      };
+    }),
+    // 时间窗之外（本通道不写，交给锚点路）——页面上单列，只读
+    missed: missed.map(({ photo, t }) => ({
+      file: photo.file,
+      time: photo.time,
+      thumb: photo.thumb || null,
+      reason:
+        t === null
+          ? '缺拍摄时间，无法插值'
+          : t < firstPoint.t
+            ? `早于轨迹起点 ${formatSpan(firstPoint.t - t)}`
+            : `晚于轨迹终点 ${formatSpan(t - lastPoint.t)}`,
+    })),
+    // 手机锚点照（原生坐标，唯一的外部真值）
+    anchors: calibrators.map((a) => {
+      const [lng, lat] = gcj(a.lat, a.lng);
+      return {
+        file: a.file,
+        time: a.time,
+        lat: a.lat,
+        lng: a.lng,
+        gcjLat: lat,
+        gcjLng: lng,
+        thumb: a.thumb || null,
+      };
+    }),
+    doneCount: done.length,
+  };
+
+  const template = await fs.readFile(TRACK_REVIEW_TEMPLATE, 'utf-8');
+  const html = template.replace('/*__DATA__*/ null', JSON.stringify(data));
+
+  await fs.mkdir(REVIEW_OUT_DIR, { recursive: true });
+  const outPath = path.join(REVIEW_OUT_DIR, `${dirName}_track.html`);
+  await fs.writeFile(outPath, html, 'utf-8');
+  await execFileAsync('open', [`${pathToFileURL(outPath).href}?t=${Date.now()}`]);
+
+  console.log(color.green(`✅ 轨迹审阅页已生成并打开：${outPath}`));
+  console.log(
+    color.dim(
+      [
+        `  待写 ${plans.length} 张（页面上可逐张排除）` +
+          (missed.length > 0
+            ? `；${missed.length} 张落在时间窗之外，本通道不写`
+            : '') +
+          (done.length > 0 ? `；${done.length} 张已带坐标，跳过` : ''),
+        '  页面只读、不写任何照片。核对（排除）后点「复制写入命令」，回终端粘贴回车即可。',
+        '  ℹ️ 相机照的落点必然在轨迹线上（坐标就是插值算出来的）——重点看**连线顺序**',
+        '     与**手机锚点的相对位置**：顺序往回跳 = 相机时钟错乱；整体偏一侧 = 系统性偏差。',
+      ].join('\n'),
+    ),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 主流程
@@ -1073,7 +2153,7 @@ function printRefHint(target, refs) {
   console.log(color.dim('💡 自动参照不合适？可按 q 退出后手动指定参照重跑：'));
   console.log(
     color.dim(
-      `  npm run fix-gps -- "${target.dirName}" --target ${target.fileName} --ref <参照文件名>`,
+      `  npm run fix-gps:anchor -- "${target.dirName}" --target ${target.fileName} --ref <参照文件名>`,
     ),
   );
   if (refs.length > 0 && refs.length <= 5) {
@@ -1082,7 +2162,9 @@ function printRefHint(target, refs) {
     );
   } else if (refs.length > 5) {
     console.log(
-      color.dim(`  本文件夹共 ${refs.length} 张照片带 GPS，可按 n 逐张查看`),
+      color.dim(
+        `  本文件夹共 ${refs.length} 张手机锚点照片（可作参照），可按 n 逐张查看`,
+      ),
     );
   }
 }
@@ -1133,7 +2215,16 @@ async function runSpecified(target, ref, yes) {
   }
 }
 
-/** 解析命令行参数：位置参数为文件夹名，支持 --target / --ref / --yes / --all / --review / --plan-stdin */
+/**
+ * 解析命令行参数：位置参数为文件夹名。
+ * 通道（互斥）：`--anchor`（锚点路，默认）| `--track`（轨迹路）——**判定点唯一**：
+ *   出现 `--track` 即轨迹路，否则锚点路（`--anchor` 是它的显式写法）。npm 脚本
+ *   `fix-gps:anchor` / `fix-gps:track` 只是把对应 flag 预设进命令的快捷方式，
+ *   不构成第二个判定点。
+ * 锚点路形态：`--target` / `--ref` / `--all` / `--review`（分组页）
+ * 轨迹路形态：`--review`（轨迹审阅页）/ `--tz`
+ * 两路共用：`--plan-stdin`（通道由计划 JSON 的 mode 字段判定）、`--yes`
+ */
 function parseArgs(argv) {
   const args = {
     dir: undefined,
@@ -1143,6 +2234,9 @@ function parseArgs(argv) {
     all: false,
     review: false,
     planStdin: false,
+    anchor: false,
+    track: false,
+    tz: undefined,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -1155,6 +2249,26 @@ function parseArgs(argv) {
       args.review = true;
     } else if (arg === '--plan-stdin') {
       args.planStdin = true;
+    } else if (arg === '--anchor') {
+      args.anchor = true;
+    } else if (arg === '--track') {
+      args.track = true;
+    } else if (arg === '--gpx') {
+      // 2026-10-07 改名：通道名从"数据格式"（gpx）改成"数据实体"（track）——将来若
+      // 支持 .fit / .tcx 不必再改名。旧命令可能还在终端历史里，给明确指引而不是让它
+      // 退化成"文件夹名不存在"（与 --plan 的处理同例）
+      throw new Error(
+        '--gpx 已改名为 --track（npm run fix-gps:track）。\n' +
+          '  ⚠️ 只改了命令行参数名：EXIF 里的溯源标记 `mode=gpx` 是持久化契约，不变。\n' +
+          '  新写法：npm run fix-gps:track -- "<文件夹>"',
+      );
+    } else if (arg === '--tz') {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('--')) {
+        throw new Error('参数 --tz 缺少时区值（示例：--tz +8 / --tz UTC+8 / --tz +5:30）');
+      }
+      args.tz = parseTzValue(value);
+      i++;
     } else if (arg === '--plan') {
       // 2026-10-04 移除文件入口（用户明确不需要临时文件）；旧命令可能还在终端历史里，
       // 这里给明确指引而不是让它退化成"文件夹名不存在"
@@ -1181,8 +2295,15 @@ function parseArgs(argv) {
   if ((args.target || args.ref) && !args.dir) {
     throw new Error('--target / --ref 需要同时以位置参数指定文件夹');
   }
-  if (args.yes && !args.target && !args.planStdin) {
-    throw new Error('--yes 只能在 --target 或 --plan-stdin 模式下使用');
+  // 通道判定点唯一：出现 --track 即轨迹路，否则锚点路（--anchor 是它的显式写法）
+  if (args.anchor && args.track) {
+    throw new Error(
+      '--anchor 与 --track 不能同时使用：两条补坐标通道必须分开跑' +
+        '（各自的页面/报告不同），同一点位内可按照片共存',
+    );
+  }
+  if (args.yes && !args.target && !args.planStdin && !args.track) {
+    throw new Error('--yes 只能在 --target / --plan-stdin / --track 模式下使用');
   }
   if (args.all && (!args.dir || !args.ref)) {
     throw new Error('--all 需要同时指定文件夹（位置参数）与 --ref <参照文件名>');
@@ -1194,10 +2315,10 @@ function parseArgs(argv) {
     if (!args.dir) {
       throw new Error('--review 需要同时以位置参数指定文件夹');
     }
+    // --review 两条路都能用：无 --track = 锚点分组页；有 --track = 轨迹审阅页。
+    // 但它不能与锚点路的"直接写入"形态参数并用（那是另一条流程）
     if (args.target || args.ref || args.all || args.planStdin) {
-      throw new Error(
-        '--review 不能与 --target / --ref / --all / --plan-stdin 同时使用',
-      );
+      throw new Error('--review 不能与 --target / --ref / --all / --plan-stdin 同时使用');
     }
   }
   if (args.planStdin) {
@@ -1205,25 +2326,72 @@ function parseArgs(argv) {
       throw new Error('--plan-stdin 需要同时以位置参数指定文件夹');
     }
     if (args.target || args.ref || args.all || args.review) {
+      throw new Error('--plan-stdin 不能与 --target / --ref / --all / --review 同时使用');
+    }
+    // 计划自带通道标识（mode 字段）：判定点唯一，不在命令行重复指定，避免两处口径
+    if (args.anchor || args.track) {
       throw new Error(
-        '--plan-stdin 不能与 --target / --ref / --all / --review 同时使用',
+        '--plan-stdin 不能与 --anchor / --track 同时使用：计划 JSON 的 mode 字段' +
+          '已表明是哪条通道，不要在命令行重复指定',
       );
     }
+  }
+  if (args.track) {
+    if (!args.dir) {
+      throw new Error('--track 需要同时以位置参数指定文件夹');
+    }
+    if (args.target || args.ref || args.all) {
+      throw new Error(
+        '--track 不能与 --target / --ref / --all 同时使用：那些是锚点路的形态参数',
+      );
+    }
+  }
+  if (args.tz !== undefined && !args.track) {
+    throw new Error('--tz 只在 --track 模式下有意义（锚点路不需要时区）');
   }
   return args;
 }
 
+/**
+ * 解析 --tz 值（UTC 偏移）。接受 `+8` / `8` / `UTC+8` / `+5:30` / `UTC-3` 等写法。
+ * 允许半小时（+5:30）：自动判定只枚举整数小时，半小时时区必须能显式指定。
+ * @param {string} raw 命令行给的原始值
+ * @returns {number} 偏移小时数（可为负、可含小数）
+ */
+function parseTzValue(raw) {
+  const m = /^(?:utc)?([+-]?)(\d{1,2})(?::(\d{2}))?$/i.exec(raw.trim());
+  if (!m) {
+    throw new Error(
+      `--tz 值无法解析："${raw}"（示例：--tz +8 / --tz UTC+8 / --tz +5:30）`,
+    );
+  }
+  const sign = m[1] === '-' ? -1 : 1;
+  const hours = Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
+  if (hours > 14) {
+    throw new Error(
+      `--tz 值超出范围："${raw}"（UTC 偏移在 −12 ~ +14 小时之间）`,
+    );
+  }
+  return sign * hours;
+}
+
 function printUsage() {
-  console.log('用法：');
+  console.log('用法（两条通道各有 npm 脚本名；等价的裸 flag 是 --anchor / --track）：');
   console.log('  npm run fix-gps                                       全量扫描所有文件夹');
-  console.log('  npm run fix-gps -- 文件夹                             只处理指定文件夹');
-  console.log('  npm run fix-gps -- 文件夹 --target a.JPG --ref b.HEIC 手动指定目标与参照（同文件夹）');
-  console.log('  npm run fix-gps -- 文件夹 --target a.JPG [--yes]      指定目标，参照自动推荐；--yes 免确认');
-  console.log('  npm run fix-gps -- 文件夹 --ref b.HEIC --all          批量：将参照坐标写入该文件夹全部缺 GPS 的照片');
-  console.log('  npm run fix-gps -- 文件夹 --review                    生成只读分组审阅页（多锚点文件夹；');
+  console.log('  npm run fix-gps:anchor -- 文件夹                      锚点路：只处理指定文件夹');
+  console.log('  npm run fix-gps:anchor -- 文件夹 --target a.JPG --ref b.HEIC   手动指定目标与参照（同文件夹）');
+  console.log('  npm run fix-gps:anchor -- 文件夹 --target a.JPG [--yes]        指定目标，参照自动推荐；--yes 免确认');
+  console.log('  npm run fix-gps:anchor -- 文件夹 --ref b.HEIC --all   批量：将参照坐标写入该文件夹全部缺 GPS 的照片');
+  console.log('  npm run fix-gps:anchor -- 文件夹 --review             分组审阅页（多锚点文件夹；');
   console.log('                                                        第 5 区为高德卫星底图，需 .env 配 REACT_APP_AMAP_API_KEY）');
-  console.log("  echo '<分组计划 JSON>' | npm run fix-gps -- 文件夹 --plan-stdin");
-  console.log('                                                        读入审阅页导出的分组计划（页面「复制写入命令」给出完整一行），一次确认写入全部');
+  console.log("  echo '<计划 JSON>' | npm run fix-gps -- 文件夹 --plan-stdin");
+  console.log('                                                        读入审阅页导出的计划（类型由 JSON 的 mode 字段判定，两条通道共用此入口）');
+  console.log('  npm run fix-gps:track -- 文件夹                       轨迹路：按拍摄时刻在目录内的 .gpx 轨迹上插值补坐标');
+  console.log('                                                        时区自动判定（用目录内原生手机照交叉验证）；');
+  console.log('                                                        --tz +8 / UTC+8 / +5:30 可显式覆盖；');
+  console.log('                                                        窗内的写、窗外的逐张打印后跳过（交给锚点路）');
+  console.log('  npm run fix-gps:track -- 文件夹 --review              轨迹审阅页：高德底图 + 轨迹折线 + 落点（带序号）');
+  console.log('                                                        + 手机锚点照；可排除某几张后复制写入命令');
 }
 
 /**
@@ -1306,9 +2474,9 @@ async function main() {
     process.exit(1);
   }
 
-  // 审阅页 / 计划模式：只面向单个文件夹，直接做目录预检，跳过全量扫描
-  // （--review / --plan-stdin 自带校验链，不需要 missing / refs 池）
-  if (args.review || args.planStdin) {
+  // 审阅页 / 计划模式 / 轨迹终端报告：只面向单个文件夹，直接做目录预检，跳过全量扫描
+  // （这些路径自带校验链，不需要 missing / refs 池）
+  if (args.review || args.planStdin || args.track) {
     const subDirs = (await fs.readdir(ORIGIN_DIR, { withFileTypes: true }))
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
@@ -1322,10 +2490,10 @@ async function main() {
       process.exit(1);
     }
     if (args.review) {
-      // 高德 key 预检（AGENTS.md S3：假设配置在位、预检一次、缺失即报错退出，
-      // 不做兜底）：审阅页第 5 区要嵌卫星底图，key 对 --review 是硬依赖。
-      // 作用域**刻意只限 --review**——交互模式 / --all / --plan-stdin 都不读 key，
-      // 尤其 --plan-stdin 是写入关键路径，绝不能被"看图的附加区块"拖死。
+      // 高德 key 预检（AGENTS.md S3：假设配置在位、预检一次、缺失即报错退出，不做兜底）：
+      // 两条路的审阅页都要嵌卫星底图，key 对 --review 是硬依赖。作用域**刻意只限
+      // --review**——交互模式 / --all / --plan-stdin / 轨迹终端报告都不读 key，尤其
+      // --plan-stdin 是写入关键路径，绝不能被"看图的附加区块"拖死。
       const amapKey = readDotenvValue('REACT_APP_AMAP_API_KEY');
       if (!amapKey) {
         console.error(
@@ -1339,7 +2507,7 @@ async function main() {
               '   2) 高德开放平台控制台 → 应用管理 → 新建应用 → 添加 Key，',
               '      服务平台选「Web端(JS API)」：https://console.amap.com/dev/key/app',
               '   3) 填入 .env：REACT_APP_AMAP_API_KEY=<你的 key>',
-              `   4) 重跑：npm run fix-gps -- "${filterDir}" --review`,
+              `   4) 重跑：npm run fix-gps:${args.track ? 'track' : 'anchor'} -- "${filterDir}" --review`,
               '',
               '   注：平台必须是 JS API —— 静态地图/Web 服务类型的 key 不适用',
               '       （实测返回 USERKEY_PLAT_NOMATCH）。',
@@ -1348,14 +2516,22 @@ async function main() {
         );
         process.exit(1);
       }
-      return runReview(filterDir, amapKey);
+      // 两条路的审阅页：无 --track = 锚点分组页；有 --track = 轨迹审阅页
+      // （amapKey 传给 runTrack 是"出图形页面、不写入"的开关）
+      return args.track
+        ? runTrack(filterDir, { tz: args.tz, amapKey })
+        : runReview(filterDir, amapKey);
+    }
+    if (args.track) {
+      // 轨迹终端报告**不读高德 key**：它没有图形页面（只有 --review 才要底图）
+      return runTrack(filterDir, { tz: args.tz, yes: args.yes });
     }
     if (args.planStdin && process.stdin.isTTY) {
       console.error(
         color.red(
           '❌ --plan-stdin 需要从管道读入计划。审阅页点「复制写入命令」，' +
             '回终端直接粘贴、回车即可（那行命令自带 JSON）；例如：\n' +
-            `  echo '<分组计划 JSON>' | npm run fix-gps -- "${filterDir}" --plan-stdin`,
+            `  echo '<计划 JSON>' | npm run fix-gps -- "${filterDir}" --plan-stdin`,
         ),
       );
       process.exit(1);
@@ -1364,8 +2540,9 @@ async function main() {
     return runPlan(rawPlan, filterDir, args.yes);
   }
 
-  // 扫描（全量扫一次，之后按需在内存中过滤）
-  const { subDirs, missing, refsByDir } = await scan();
+  // 扫描（全量扫一次，之后按需在内存中过滤）；filterDir 传入后，未知设备硬错只会在
+  // 本命令实际处理的文件夹上触发
+  const { subDirs, missing, refsByDir, doneByDir } = await scan(filterDir);
 
   if (filterDir !== undefined && !subDirs.includes(filterDir)) {
     console.error(
@@ -1383,6 +2560,15 @@ async function main() {
       ? refsByDir
       : [...refsByDir].filter(([dir]) => dir === filterDir),
   );
+  const filteredMissingNames = new Set(filteredMissing.map((p) => p.fileName));
+  // 已带坐标的相机照（done）：不作参照也不需补。报错文案必须能把它们与"压根不存在"
+  // 和"缺坐标"区分开，否则用户拿着文件名查不出原因
+  const filteredDone = new Set(
+    (filterDir === undefined
+      ? [...doneByDir.values()].flat()
+      : doneByDir.get(filterDir) || []
+    ).map((p) => p.fileName),
+  );
 
   // 手动指定模式：--target 必填且必须缺 GPS；--ref 可选（缺省则该张走自动推荐）
   if (args.target) {
@@ -1390,19 +2576,17 @@ async function main() {
     const target = filteredMissing.find((p) => p.fileName === args.target);
 
     if (!target) {
-      if (dirRefs.some((r) => r.fileName === args.target)) {
-        console.error(
-          color.red(
-            `❌ "${args.target}" 已有 GPS 坐标，本工具不做覆盖（仅处理缺 GPS 的照片）。`,
-          ),
-        );
-      } else {
-        console.error(
-          color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.target}"（或不是可处理的媒体文件）。`,
-          ),
-        );
-      }
+      console.error(
+        color.red(
+          `❌ ${describeUnusableFile({
+            filterDir,
+            fileName: args.target,
+            dirRefs,
+            missingNames: filteredMissingNames,
+            doneNames: filteredDone,
+          })}`,
+        ),
+      );
       process.exit(1);
     }
 
@@ -1415,17 +2599,17 @@ async function main() {
 
     const ref = dirRefs.find((r) => r.fileName === args.ref);
     if (!ref) {
-      if (filteredMissing.some((p) => p.fileName === args.ref)) {
-        console.error(
-          color.red(`❌ "${args.ref}" 没有 GPS 坐标，不能作为参照。`),
-        );
-      } else {
-        console.error(
-          color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的媒体文件）。`,
-          ),
-        );
-      }
+      console.error(
+        color.red(
+          `❌ ${describeUnusableFile({
+            filterDir,
+            fileName: args.ref,
+            dirRefs,
+            missingNames: filteredMissingNames,
+            doneNames: filteredDone,
+          })}`,
+        ),
+      );
       process.exit(1);
     }
 
@@ -1437,23 +2621,46 @@ async function main() {
     const dirRefs = filteredRefs.get(filterDir) || [];
     const ref = dirRefs.find((r) => r.fileName === args.ref);
     if (!ref) {
-      if (filteredMissing.some((p) => p.fileName === args.ref)) {
-        console.error(
-          color.red(`❌ "${args.ref}" 没有 GPS 坐标，不能作为参照。`),
-        );
-      } else {
-        console.error(
-          color.red(
-            `❌ 文件夹 "${filterDir}" 中未找到 "${args.ref}"（或不是可处理的媒体文件）。`,
-          ),
-        );
-      }
+      console.error(
+        color.red(
+          `❌ ${describeUnusableFile({
+            filterDir,
+            fileName: args.ref,
+            dirRefs,
+            missingNames: filteredMissingNames,
+            doneNames: filteredDone,
+          })}`,
+        ),
+      );
       process.exit(1);
     }
     return runBatch(filteredMissing, ref, filterDir);
   }
 
   return run(filteredMissing, filteredRefs, filterDir, { specified: false });
+}
+
+/**
+ * 解释"这个文件名为什么用不了"（--target / --ref 查不到时的报错文案）。
+ * 设备维度判据下有三类非存在性失败，必须各给一句能直接定位原因的话：
+ *   ① 手机照有坐标 → 它是锚点，不是本命令的目标；
+ *   ② 相机照有坐标 → 属"已补过"（done），既不覆盖也不作参照；
+ *   ③ 缺坐标 → 不能当参照（只能当目标）。
+ */
+function describeUnusableFile({ filterDir, fileName, dirRefs, missingNames, doneNames }) {
+  if (dirRefs.some((r) => r.fileName === fileName)) {
+    return `"${fileName}" 已有 GPS 坐标，本工具不做覆盖（仅处理缺 GPS 的照片）。`;
+  }
+  if (doneNames.has(fileName)) {
+    return (
+      `"${fileName}" 已有 GPS 坐标，但设备不是手机 ⇒ 属"已补过"的照片，` +
+      '既不覆盖、也不作参照（锚点池只收手机的原生 GPS 照片）。'
+    );
+  }
+  if (missingNames.has(fileName)) {
+    return `"${fileName}" 没有 GPS 坐标，不能作为参照。`;
+  }
+  return `文件夹 "${filterDir}" 中未找到 "${fileName}"（或不是可处理的媒体文件）。`;
 }
 
 async function run(missing, refsByDir, filterDir, { specified = false } = {}) {
@@ -1603,6 +2810,12 @@ if (require.main === module) {
 // outOfChina 导出是因为"哪些算境内"这个界值在 src/Application/Map/AMap/overseasTiles.js
 // 里还有一份（那边决定境外瓦片换不换影像源），漂移会让境内边界瓦片静默违规——由
 // test/overseas-tiles.test.js 的边界探针锁两处同口径，故必须导出以接受断言。
+// 轨迹通道的纯函数（parseGpxTrack / interpolateTrack / calibrateTimezone /
+// suggestTzOffset）导出，是因为它们"算错不报错"（插值错会把坐标写到几十米外、
+// 还一路显示 ✅）：由 test/gpx-track.test.js 用内存构造的 GPX 文本钉住语义边界。
+// 设备映射表与 classifyDevice 导出，供 test/geo-provenance.test.js 断言两脚本同值同结果。
+// parseArgs / parseTzValue 导出，供测试钉住两条通道的 flag 判定与互斥矩阵（命名分路后
+// 通道判定点唯一 = 有没有 --track，这条规则必须被测试锁住，否则改名时容易漂）。
 module.exports = {
   mergeAnchors,
   haversineMeters,
@@ -1610,4 +2823,18 @@ module.exports = {
   wgs84ToGcj02,
   outOfChina,
   REVIEW_EXIF_OPTS,
+  parseGeoTag,
+  parseGeoSource,
+  classifyDevice,
+  assertDeviceKnown,
+  PHONE_MAKES,
+  CAMERA_MAKES,
+  TRACK_EXTS,
+  parseGpxTrack,
+  interpolateTrack,
+  calibrateTimezone,
+  wallTimeToEpoch,
+  suggestTzOffset,
+  parseArgs,
+  parseTzValue,
 };

@@ -24,6 +24,12 @@ const OUTPUT_FILE = path.join(__dirname, 'src', 'Application', 'output.json');
 // （组内任一张缺坐标即整组跳过）、坐标同样写在原片（真相源）
 // 见 docs/plans/2026-10-04-video-mp4-support.md
 const ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.heic', '.tiff', '.mp4']);
+// 轨迹文件扩展名（Apple Watch「户外步行」导出、经手机 gpx export 落到点位目录）。
+// **刻意不进 ALLOWED_EXTS**：轨迹不是媒体——进了白名单就会变成 output.json 的一条
+// photo 条目、进缺坐标硬拦、进派生图流程，全错。这里只用来判断"该点位是否有轨迹"，
+// 从而把预检提示优先指向轨迹路（fix-gps:track）。
+// 与 fix-gps.js 的同名常量是同值副本（刻意不抽共享模块），由跨文件测试锁一致。
+const TRACK_EXTS = new Set(['.gpx']);
 // 视频判定：按扩展名。读取通道（exifr / exiftool）与生成流程按它分叉
 const VIDEO_EXTS = new Set(['.mp4']);
 const isVideoFile = (file) => VIDEO_EXTS.has(path.extname(file).toLowerCase());
@@ -528,6 +534,47 @@ function reportDeviceTypes(photos) {
 }
 
 /**
+ * 混合来源点位提示（只报告：不修改任何文件、不改变退出码、不写进 output.json）
+ *
+ * "混合" = 同一点位内出现了 **≥2 种补坐标通道**（anchor 锚点复制 / gpx 轨迹插值）。
+ * 这是**合法状态**，不是错误：轨迹只覆盖"按下记录"之后的时段，窗口外的照片只能借
+ * 锚点，两条通道按照片共存是常态（2026-10-07 用户拍板：不靠"避免混合"来解决，而是
+ * 让混合成为一等公民 + 每张照片的来源可判别）。
+ * 之所以要打印：点位坐标取**封面照片**的坐标，混合点位里换个封面就会让 marker 移动
+ * ——这条性质是已知的（见 docs/photo-metadata.md），但只有看得见才不会被当成 bug。
+ *
+ * 注意"原生坐标"不计入通道数：手机照自带坐标不属任何补坐标通道，每个点位都有它。
+ *
+ * @param {{dirName: string, images: {meta: {geoSource?, geoMode?}}[]}[]} ready 通过预检的点位
+ */
+function reportMixedSources(ready) {
+  const lines = [];
+  for (const { dirName, images } of ready) {
+    const counts = new Map();
+    for (const { meta } of images) {
+      // geoSource 存在 ⇒ 该张的坐标是补来的；geoMode 与它同源（parseGeoTag 一次得出），
+      // 无标记时恒为 'anchor'，故此处无需再兜默认值
+      if (!meta.geoSource) continue;
+      counts.set(meta.geoMode, (counts.get(meta.geoMode) || 0) + 1);
+    }
+    if (counts.size < 2) continue;
+    lines.push(
+      `${dirName}：` +
+        [...counts.entries()].map(([mode, n]) => `${mode} ${n} 张`).join(' · '),
+    );
+  }
+  if (lines.length === 0) return;
+  console.log('\n混合来源点位（同一点位内两条补坐标通道并用，属合法状态）：');
+  for (const line of lines) {
+    console.log(`  ${line}`);
+  }
+  console.log(
+    '  ℹ️ 点位坐标取封面照片的坐标；混合点位里换封面会让 marker 移动' +
+      '（见 docs/photo-metadata.md）',
+  );
+}
+
+/**
  * 派生图增量汇总（只报告：不修改任何文件、不改变退出码）
  *
  * 逐张跳过时静默（避免刷屏），只在收尾打印一次文件级计数——否则"为什么这么快"
@@ -566,9 +613,12 @@ function printUsage() {
 // EXIF 预检（零写操作）
 // ---------------------------------------------------------------------------
 
-// 坐标溯源标记前缀：fix-gps 复制坐标时写进 GPSProcessingMethod，用于把"复制来的
+// 坐标溯源标记前缀：fix-gps 补坐标时写进 GPSProcessingMethod，用于把"复制来的
 // 坐标"与原生坐标区分开。前缀必须存在——相机会自己写该标签（如 "GPS" / "Apple"），
-// 没有前缀就无法区分。
+// 没有前缀就无法区分。完整格式：
+//   `hcm-geosource mode=<anchor|gpx> ref=<参照> date=<日期>`
+// mode 记录坐标来自哪条补坐标通道（锚点复制 / GPX 轨迹插值）——同一点位内两条通道
+// 可以按照片共存，靠它就事后可判别（见 docs/photo-metadata.md）
 const GEO_SOURCE_PREFIX = 'hcm-geosource';
 
 // 同位置锚点合并的距离判据（米）：相距小于此值的锚点视为"同一处"。
@@ -623,9 +673,34 @@ function decodeUndefinedText(raw) {
 }
 
 /**
+ * 解析坐标溯源标记，得到补坐标通道与参照文件名：
+ *   `hcm-geosource mode=<anchor|gpx> ref=<参照> date=<YYYY-MM-DD>`
+ *
+ * **缺 `mode=` ⇒ mode = 'anchor'**：不是 fallback，而是**准确的历史陈述** ——
+ * 溯源标记 2026-10-03（提交 236d984）引入、`mode=` 2026-10-07 才加，中间写入的坐标
+ * 只可能来自锚点这一条通道，且无法回填（要逐张重写原片 EXIF）。存量 63 张正是这种形态。
+ *
+ * 与 fix-gps.js 的同名函数是一对持久化契约（格式改了要两边一起改），行为由
+ * test/geo-provenance.test.js 逐例断言两处结果一致。
+ *
+ * @param {Uint8Array|number[]|string|undefined} raw GPSProcessingMethod 原始值
+ * @returns {{mode: string, ref: string}|undefined} undefined = 原生坐标（无本工具的标记）
+ */
+function parseGeoTag(raw) {
+  const text = decodeUndefinedText(raw)?.trim();
+  if (!text || !text.startsWith(GEO_SOURCE_PREFIX)) return undefined;
+  const modeMatch = /\bmode=([A-Za-z_-]+)\b/.exec(text);
+  const refMatch = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
+  return {
+    mode: modeMatch ? modeMatch[1] : 'anchor',
+    ref: refMatch ? refMatch[1] : 'unknown',
+  };
+}
+
+/**
  * 从 GPSProcessingMethod 提取坐标溯源的参照文件名
  *
- * fix-gps 写入的格式为 `hcm-geosource ref=<参照文件名> date=<YYYY-MM-DD>`。
+ * fix-gps 写入的格式为 `hcm-geosource mode=<通道> ref=<参照文件名> date=<YYYY-MM-DD>`。
  * 无标记（或标记不是本工具写的）→ undefined，表示原生坐标；
  * 有标记但参照名不可解析 → 'unknown'（仍是复制坐标，不能被误判为原生）。
  *
@@ -633,10 +708,7 @@ function decodeUndefinedText(raw) {
  * @returns {string|undefined} 参照文件名
  */
 function parseGeoSource(raw) {
-  const text = decodeUndefinedText(raw)?.trim();
-  if (!text || !text.startsWith(GEO_SOURCE_PREFIX)) return undefined;
-  const match = /\bref=(.+?)(?:\s+date=\d{4}-\d{2}-\d{2})?$/.exec(text);
-  return match ? match[1] : 'unknown';
+  return parseGeoTag(raw)?.ref;
 }
 
 /**
@@ -708,7 +780,7 @@ function stripTimezoneSuffix(raw) {
  * "导出时间"（iPhone 从相册导出的时刻），不是拍摄时间，两者可差一整天。
  *
  * @param {string} filePath 视频绝对路径
- * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, duration}>}
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, geoMode, duration}>}
  */
 async function readVideoMeta(filePath) {
   try {
@@ -725,6 +797,7 @@ async function readVideoMeta(filePath) {
       filePath,
     ]);
     const tags = JSON.parse(stdout)[0] || {};
+    const geoTag = parseGeoTag(tags.GPSProcessingMethod);
     return {
       lat: typeof tags.GPSLatitude === 'number' ? tags.GPSLatitude : undefined,
       lng:
@@ -732,7 +805,10 @@ async function readVideoMeta(filePath) {
       takenAt: normalizeExifDateTime(stripTimezoneSuffix(tags.CreationDate)),
       make: tags.Make,
       model: tags.Model,
-      geoSource: parseGeoSource(tags.GPSProcessingMethod),
+      geoSource: geoTag?.ref,
+      // 补坐标通道（anchor / gpx）。**只用于收尾汇总的"混合来源点位"提示**，
+      // 不进 output.json（前端不消费，写进去就是可推导的冗余字段）。
+      geoMode: geoTag?.mode,
       duration:
         typeof tags.Duration === 'number' ? tags.Duration : undefined,
     };
@@ -745,7 +821,7 @@ async function readVideoMeta(filePath) {
 /**
  * 读取单张照片 / 单个视频的预检元数据（静默：不打印、不写盘）
  * @param {string} filePath 媒体文件绝对路径
- * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, duration?}>}
+ * @returns {Promise<{lat, lng, takenAt, make, model, geoSource, geoMode, duration?}>}
  */
 async function readPhotoMeta(filePath) {
   // 视频分叉：exifr 读不了 mp4，走 exiftool（duration 仅视频有）
@@ -753,13 +829,15 @@ async function readPhotoMeta(filePath) {
     return readVideoMeta(filePath);
   }
   const exif = await exifr.parse(filePath, PREFLIGHT_EXIF_OPTS).catch(() => null);
+  const geoTag = parseGeoTag(exif?.GPSProcessingMethod);
   return {
     lat: exif?.latitude,
     lng: exif?.longitude,
     takenAt: normalizeExifDateTime(exif?.DateTimeOriginal),
     make: exif?.Make,
     model: exif?.Model,
-    geoSource: parseGeoSource(exif?.GPSProcessingMethod),
+    geoSource: geoTag?.ref,
+    geoMode: geoTag?.mode,
   };
 }
 
@@ -844,6 +922,12 @@ async function preflightDir(dirName) {
         !isDerivedFile(file),
     );
 
+    // 目录里的轨迹文件（.gpx）：**不是媒体**，不进 mediaFiles、不进 output.json，
+    // 只用于把"缺坐标"时的提示优先指向 GPX 通道
+    const trackFiles = files.filter((file) =>
+      TRACK_EXTS.has(path.extname(file).toLowerCase()),
+    );
+
     if (mediaFiles.length === 0) {
       return {
         dirName,
@@ -883,22 +967,35 @@ async function preflightDir(dirName) {
       // 文件名的 --all 批量命令；≥2 张时选哪张作参照是分组决策（可能落在多处），
       // 不替用户拍板，改为给出 --review 审阅页命令（页面调整分组后一次写入）。
       // 排除全部派生文件（与 fix-gps 的扫描口径对齐）
+      // 锚点 = **设备是手机**且有坐标（判据与 fix-gps 的锚点池一致，2026-10-07）：
+      // 光"有坐标"不够——被补过坐标的相机照不能当参照，否则两条补坐标通道互相污染、
+      // 分组结果取决于先跑了哪条通道。未知设备（classifyDevice 返 null）也不作参照，
+      // 由 reportDeviceTypes 的收尾汇总显式报出（本脚本口径：宁缺毋假 + 报出来）
       const refs = images.filter(
         (image) =>
           image.meta.lat !== undefined &&
           image.meta.lng !== undefined &&
-          !isDerivedFile(image.file),
+          classifyDevice(image.meta.make, image.meta.model) === 'phone',
       );
-      let hint = `补坐标后重跑：npm run fix-gps -- "${dirName}"`;
+      let hint = `补坐标后重跑：npm run fix-gps:anchor -- "${dirName}"`;
       if (refs.length === 1) {
         hint +=
           `\n或批量复制坐标（将 ${refs[0].file} 的坐标写入其余 ${missing.length} 张）：` +
-          `\n    npm run fix-gps -- "${dirName}" --ref ${refs[0].file} --all`;
+          `\n    npm run fix-gps:anchor -- "${dirName}" --ref ${refs[0].file} --all`;
       } else if (refs.length >= 2) {
         hint +=
           `\n或生成分组审阅页（${refs.length} 张锚点${describeAnchorSpread(refs)}，` +
           '页面定好分组后一次写入）：' +
-          `\n    npm run fix-gps -- "${dirName}" --review`;
+          `\n    npm run fix-gps:anchor -- "${dirName}" --review`;
+      }
+      // 有轨迹文件时把轨迹路顶到最前：轨迹只覆盖"按下记录"之后的时段，窗口外的
+      // 照片仍需锚点路 —— 两条提示都给，谁适用由用户/执行结果决定，不互相取代
+      if (trackFiles.length > 0) {
+        hint =
+          `该文件夹有轨迹文件（${trackFiles.join('、')}），优先用轨迹路补坐标：` +
+          `\n    npm run fix-gps:track -- "${dirName}"` +
+          '\n    （轨迹只覆盖录制时段，时间窗外的照片仍需下面的锚点路）\n' +
+          hint;
       }
       return {
         dirName,
@@ -1247,6 +1344,11 @@ async function processAllPhotos() {
       reportDeviceTypes(results.flatMap((group) => group.photos));
     }
 
+    // 6.5 混合来源点位提示（只报告，不影响退出码）
+    if (ready.length > 0) {
+      reportMixedSources(ready);
+    }
+
     console.log(
       results.length === 0
         ? color.yellow('\n⚠️ 本轮没有任何文件夹产出数据（见上）。')
@@ -1285,6 +1387,8 @@ if (require.main === module) {
 // PREFLIGHT_EXIF_OPTS 一并导出，供 test/gps-sign.test.js 锁住"读坐标的 gps 块不得 pick"
 // 这一口径，并与 fix-gps.js 的 REVIEW_EXIF_OPTS 做跨文件一致性断言。
 // derivedIsUpToDate 只读文件系统（不写不删），单测用临时目录 + fs.utimes 锁其语义边界。
+// parseGeoTag / TRACK_EXTS / 设备映射表导出，供 test/geo-provenance.test.js 断言
+// 它们与 fix-gps.js 的副本同值同行为（两边各存一份、刻意不抽共享模块）。
 module.exports = {
   normalizeExifDateTime,
   stripTimezoneSuffix,
@@ -1294,4 +1398,10 @@ module.exports = {
   ALLOWED_EXTS,
   DERIVED_SUFFIXES,
   PREFLIGHT_EXIF_OPTS,
+  parseGeoTag,
+  parseGeoSource,
+  classifyDevice,
+  PHONE_MAKES,
+  CAMERA_MAKES,
+  TRACK_EXTS,
 };

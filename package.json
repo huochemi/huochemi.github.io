@@ -40,7 +40,9 @@
     "photos": "node process-photos.js",
     "new-place": "node new-place.js",
     "del-photo": "node delete-photo.js",
-    "fix-gps": "node fix-gps.js"
+    "fix-gps": "node fix-gps.js",
+    "fix-gps:anchor": "node fix-gps.js --anchor",
+    "fix-gps:track": "node fix-gps.js --track"
   },
   "eslintConfig": {
     "extends": [
