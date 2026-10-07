@@ -47,6 +47,9 @@ function flattenPhotos(data) {
           // 组级当前不写 device（文件夹内混机时单一值无意义），
           // 此处透传仅为两个分支结构对称，实际取到 undefined
           device: group.device,
+          // 阶段标记（'ref' = 还没去过的参考点位，缺省即实拍）。必须透传：照片分组
+          // 模式下选中项就是照片本身、拿不到所属组对象，靠它才能做参考态分支
+          pinKind: group.pinKind,
         },
       ];
     }
@@ -74,6 +77,7 @@ function flattenPhotos(data) {
           duration: photo.duration,
           dirName: group.dirName,
           coverFileName: group.fileName,
+          pinKind: group.pinKind,
         },
       ];
     });
@@ -158,19 +162,19 @@ const formatDurationBadge = (duration) => {
 // 更有信息量，视频身份已由播放三角表达）；缺项自动省略，皆缺返回空串
 // （与 markerTooltip 同惯例：filter(Boolean) + join，不渲染 "undefined ·"）。
 // 设备图标不在此函数内——SVG 是元素、无法进 join，改由 DeviceBadgeIcon 渲染
-const thumbnailBadgeText = (photo) =>
-  (photo.type === 'video'
-    ? [
-        formatTakenAtShort(photo.takenAt),
-        formatDurationBadge(photo.duration),
-      ]
-    : [
-        formatTakenAtShort(photo.takenAt),
-        formatFileExt(photo.fileName),
-      ]
-  )
-    .filter(Boolean)
-    .join(' · ');
+//
+// isRef 由调用方从**组级**标记算出：参考图是 photos[] 的项，项上没有 pinKind
+// （它是点位级的属性）。参考图既没有拍摄时刻也没有设备，扩展名（refs/01.jpg）
+// 也不代表任何东西——显示「参考图」才不骗人，同时避开"渲染出一个空角标"。
+const thumbnailBadgeText = (photo, isRef) => {
+  if (isRef) return '参考图';
+
+  const parts =
+    photo.type === 'video'
+      ? [formatTakenAtShort(photo.takenAt), formatDurationBadge(photo.duration)]
+      : [formatTakenAtShort(photo.takenAt), formatFileExt(photo.fileName)];
+  return parts.filter(Boolean).join(' · ');
+};
 
 // 视频播放三角（内联 SVG，惯例同 DeviceBadgeIcon：currentColor 继承底色、
 // 任何平台不依赖 emoji 字体）。卡片中央半透明圆底 + 白三角，一处定义两处复用
@@ -195,12 +199,18 @@ const VideoPlayIcon = ({ className, size = 22 }) => (
 // 判别式用 photo.photos 而非 localStorage：分组模式的 item 是 output.json
 // 顶层对象、带 photos 数组；照片模式的 item 由 flattenPhotos 产出、无该字段。
 // 字段缺失时宁缺毋假（filter(Boolean) + join），不渲染 "undefined ·"。
+//
+// 参考点位（pinKind === 'ref'）追加「参考图」语义：地图上"哪些是我自己拍的"
+// 不能靠猜，参考图也没有拍摄时间可显示。
 const markerTooltip = (photo, photoCount) => {
+  const isRef = photo.pinKind === 'ref';
   if (photo.photos) {
+    const unit = isRef ? '张参考图' : '张';
     return photo.dirName
-      ? `${photo.dirName}（共 ${photoCount} 张）`
-      : `共 ${photoCount} 张`;
+      ? `${photo.dirName}（共 ${photoCount} ${unit}）`
+      : `共 ${photoCount} ${unit}`;
   }
+  if (isRef) return `${photo.fileName}（参考图）`;
   return [photo.fileName, formatTakenAtFull(photo.takenAt)]
     .filter(Boolean)
     .join(' · ');
@@ -222,25 +232,42 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
   // Lightbox 信息面板展开态（"ⓘ" 按钮控制，默认收起）
   const [infoOpen, setInfoOpen] = useState(false);
 
+  // 坐标分两条通道，分叉判据是 pinKind：
+  //  - 实拍点位：坐标来自照片 EXIF，是 WGS84 ⇒ 必须 convertFrom 转 GCJ02（原通道）
+  //  - 参考点位（pinKind === 'ref'）：坐标是人工标注的 GCJ02（管线从 refs/point.json
+  //    原样透传）⇒ **直接当 lnglat 用，绝不能进 convertFrom**（否则被二次偏移）
+  // 合并时按原下标回填，保持 allPhotos 的顺序（marker 顺序与首屏视野包围盒不变）。
   useEffect(() => {
     if (!AMap || !mapInstance) return;
 
-    AMap.convertFrom(
-      allPhotos.map((file) => [file.lng, file.lat]),
-      'gps',
-      (status, result) => {
-        if (result.info !== 'ok') {
-          console.error('AMap.convertFrom failed:', result);
-          return;
-        }
-        const photos = result.locations.map((resLnglat, index) => ({
-          ...allPhotos[index],
-          lnglat: resLnglat,
-        }));
-
-        setPhotos(photos);
-      },
+    const resolved = allPhotos.map((file) =>
+      file.pinKind === 'ref' ? { ...file, lnglat: [file.lng, file.lat] } : null,
     );
+    const gpsIndexes = [];
+    const gpsLngLats = [];
+    allPhotos.forEach((file, index) => {
+      if (file.pinKind === 'ref') return;
+      gpsIndexes.push(index);
+      gpsLngLats.push([file.lng, file.lat]);
+    });
+
+    // 全部都是参考点位时不必调 convertFrom（空数组调用没有意义）
+    if (gpsLngLats.length === 0) {
+      setPhotos(resolved.filter(Boolean));
+      return;
+    }
+
+    AMap.convertFrom(gpsLngLats, 'gps', (status, result) => {
+      if (result.info !== 'ok') {
+        console.error('AMap.convertFrom failed:', result);
+        return;
+      }
+      result.locations.forEach((resLnglat, offset) => {
+        const index = gpsIndexes[offset];
+        resolved[index] = { ...allPhotos[index], lnglat: resLnglat };
+      });
+      setPhotos(resolved.filter(Boolean));
+    });
   }, [AMap, mapInstance, container]);
 
   // 初始视野自动包住全部照片 marker：必须在 React commit（marker 已
@@ -349,6 +376,11 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
     ? selectedGroup.coverFileName || selectedGroup.fileName
     : undefined;
 
+  // 当前选中组的阶段标记：抽屉张数文案与缩略图角标共用。
+  // 这里用**组级**标记而不是照片项的 pinKind——参考图是 photos[] 里的项，
+  // 项上没有这个字段（pinKind 描述的是"点位处于哪个阶段"，属点位级属性）。
+  const isRefGroup = selectedGroup?.pinKind === 'ref';
+
   return (
     <>
       {/* 顶部城市跳转胶囊条（数据源 src/Application/cities.js，用户手动维护） */}
@@ -357,6 +389,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
       {/* 渲染地图 Marker（marker 内容是 HTML 字符串——AMap content 的约束，
           视频三角用内联 SVG 而非 React 组件；样式在 MapIcon/index.css） */}
       {photos.map((photo, index) => {
+        const isRef = photo.pinKind === 'ref';
         const photoCount =
           localStorage.getItem('hcm_group_by') === 'photo'
             ? 1
@@ -368,12 +401,17 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             title={markerTooltip(photo, photoCount)}
             position={photo.lnglat}
             content={`
-              <div class="hcm-photo-pin">
+              <div class="hcm-photo-pin${isRef ? ' hcm-photo-pin--ref' : ''}">
                 <div class="hcm-photo-wrapper">
                   <img class="hcm-marker-image" src="${photo.thumbnailLink}">
                   ${
                     photo.type === 'video'
                       ? `<svg class="hcm-marker-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${PLAY_PATH}"/></svg>`
+                      : ''
+                  }
+                  ${
+                    isRef
+                      ? '<span class="hcm-photo-ref-badge">参考</span>'
                       : ''
                   }
                   <span class="hcm-photo-count">${photoCount}</span>
@@ -411,7 +449,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                   {selectedGroup.dirName || '照片列表'}
                 </span>
                 <span className={styles.drawerBadge}>
-                  {photoList.length} 张
+                  {photoList.length} {isRefGroup ? '张参考图' : '张'}
                 </span>
               </div>
               <button
@@ -450,8 +488,8 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
                     {/* 方案 B：缩略图左下角角标 = 拍摄时刻 · 原始格式/时长 · 设备图标 */}
                     {(p.takenAt || p.fileName || p.device) && (
                       <span className={styles.photoTimeBadge}>
-                        {thumbnailBadgeText(p)}
-                        {thumbnailBadgeText(p) && p.device && ' · '}
+                        {thumbnailBadgeText(p, isRefGroup)}
+                        {thumbnailBadgeText(p, isRefGroup) && p.device && ' · '}
                         <DeviceBadgeIcon device={p.device} />
                       </span>
                     )}
@@ -615,6 +653,7 @@ const MapChildren = ({ AMap, mapInstance, container }) => {
             groupName={selectedGroup?.dirName}
             groupDescription={selectedGroup?.description}
             groupReferences={selectedGroup?.references}
+            groupPinKind={selectedGroup?.pinKind}
             isCover={currentPhoto.fileName === coverFileName}
             open={infoOpen}
           />

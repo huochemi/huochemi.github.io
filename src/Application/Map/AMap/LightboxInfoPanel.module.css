@@ -95,6 +95,40 @@
   text-decoration: underline;
 }
 
+/* 坐标区块的动作行：「在高德地图中查看」+「导航到此」并排，窄屏自动折行 */
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* 间距由 .actionRow 统一给，避免两个链接各自再顶一段 margin */
+.actionRow .amapLink {
+  margin-top: 0;
+}
+
+/* 导航按钮：主操作，用胶囊底色与「查看」这类跳转链接区分开 */
+.navLink {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.18);
+  border: 0.5px solid rgba(96, 165, 250, 0.55);
+  color: #93c5fd;
+  font-size: 13px;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.navLink:hover {
+  background: rgba(96, 165, 250, 0.32);
+  color: #bfdbfe;
+}
+
 /* 坐标转换中/失败提示 */
 .coordHint {
   display: inline-block;

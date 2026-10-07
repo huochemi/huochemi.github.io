@@ -64,3 +64,36 @@
   border-right: 9px solid transparent;
   border-top: 9px solid #ffffff;
 }
+
+/* =========================================
+   参考点位图钉（pinKind === 'ref'，还没去过的点位）
+   虚线橙框 + 右上角「参考」角标，与实拍照片的白框图钉一眼区分——
+   地图上"哪些是我自己拍的"这个信息不能丢（见 docs/plans/2026-10-07-ref-places.md）
+   ========================================= */
+.hcm-photo-pin--ref {
+  /* 白框换虚线：padding 由 5px 收到 3px，补回 2px 边框，内层 120px 尺寸不变 */
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px dashed #e8590c;
+  padding: 3px;
+}
+
+/* 底部三角改用同色，与虚线框呼应（本规则在后，覆盖上面的白色三角） */
+.hcm-photo-pin--ref::after {
+  border-top-color: #e8590c;
+}
+
+/* 右上角「参考」角标：与左下角的张数互补，不与白框下的照片内容混淆 */
+.hcm-photo-pin--ref > .hcm-photo-wrapper > .hcm-photo-ref-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(232, 89, 12, 0.92);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: bold;
+  font-family: Arial, sans-serif;
+  line-height: 1.4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}

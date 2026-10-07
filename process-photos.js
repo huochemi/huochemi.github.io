@@ -38,6 +38,30 @@ const isVideoFile = (file) => VIDEO_EXTS.has(path.extname(file).toLowerCase());
 // /data 挂载到本地 data 仓库，无需先提交 data repo 即可预览
 const BASE_URL = '/data/photos';
 
+// 参考点位（"想去、还没去过"的点位，见 docs/plans/2026-10-07-ref-places.md）：
+// 点位元数据与素材同住 data 仓的一个目录，影像素材放 `refs/` 子目录。
+//
+// **判定点唯一**：原图仓该点位目录**有没有媒体文件**决定点位处于哪个阶段——
+// 有 = 实拍态（现状路径，组级坐标取封面 EXIF）；没有 = 参考态（组级坐标取
+// refs/point.json）。所以 index.json 里不需要任何"我是参考点位"的声明字段，
+// 也就不可能出现"声明与实际不符"的矛盾态。
+//
+// 参考态的全部痕迹落在 refs/ 一个目录里（**refs/ 即"参考态开关"**）：
+//   refs/point.json  {"lng": <数字>, "lat": <数字>}  ← 点位级坐标，人填，GCJ02
+//   refs/01.jpg                                      ← 参考环境照，字典序第一张即 marker 用
+// 到现场拍完之后把照片放进原图仓同名目录并重跑本脚本，点位自动转为实拍态；
+// 收尾 `rm -rf refs/` 即可——忘了也无害：实拍态根本不读 refs/，只打一行可清理提示。
+const REFS_SUBDIR = 'refs';
+const REF_POINT_FILE = 'point.json';
+// 参考图的图片扩展名白名单（point.json 不是图，不在此列）。
+// 格式纪律是 jpg（管线依赖的 sips 写不了 webp，见 plan 的 D6c）；此处多收几种只是
+// 为了不把用户手放的 png/webp 判成"0 张"，不做转码、不生成派生档位。
+const REF_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
+// 输出给前端的阶段标记：photo = 实拍态、ref = 参考态。前端**只读**它做视觉与文案
+// 分支，判定权始终在本文件的预检（单一判定点，前端不参与判定）。
+const PIN_KIND_PHOTO = 'photo';
+const PIN_KIND_REF = 'ref';
+
 // 终端着色：只给"需要你处理 / 注意"的级别行上色——红 = ⛔❌（错误，须处理）、
 // 黄 = ⚠️❗⏭️（有问题或本轮未产出，须注意）；其余级别与全部上下文行保持素文本，
 // 否则每行都有装饰时，报错反而不显眼。
@@ -500,6 +524,10 @@ async function reportInconsistencies(dirNames) {
 // 设备识别汇总用：未识别的 "Make / Model" 组合（去重收集，逐张不刷屏）
 const unidentifiedDevices = new Set();
 
+// 实拍态却还留着 refs/ 的点位（参考态向实拍态切档后忘了收尾）。
+// 逐点位收集、收尾统一提示——与"未识别设备"同为**只报告**类，不改退出码。
+const staleRefsDirs = [];
+
 /**
  * 设备类型识别汇总（只报告：不修改任何文件、不改变退出码）
  *
@@ -588,6 +616,43 @@ function reportDerivedStats() {
   console.log(
     `  ℹ️ 复用 ${derivedStats.reused} 个（原图未变动）、重新生成 ${derivedStats.generated} 个`,
   );
+}
+
+/**
+ * 登记"实拍态却还留着 refs/"的点位（只读，不删任何文件）
+ *
+ * 切档（参考态 → 实拍态）后 refs/ 是**上一阶段的遗留**，不影响产出——实拍态根本
+ * 不读它。所以这里既不报错也不改退出码（报错会把一个完全合法的实拍态卡住），
+ * 只在收尾打一行"可清理"。与"实拍态出现 index_photo 之外的脏字段"不同：
+ * 那是说谎的字段，这是过期的文件。
+ */
+async function collectStaleRefsDir(dirName, dirPath) {
+  const refsDirPath = path.join(dirPath, REFS_SUBDIR);
+  try {
+    const files = await fs.readdir(refsDirPath);
+    staleRefsDirs.push({
+      dirName,
+      refsDirPath,
+      count: files.filter((file) =>
+        REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()),
+      ).length,
+    });
+  } catch {
+    // 没有 refs/ ⇒ 正常（绝大多数点位）；读不到（权限等）也不必报——它不是产出判据
+  }
+}
+
+/** 实拍态残留 refs/ 的收尾提示（只报告：不修改任何文件、不改变退出码） */
+function reportStaleRefsDirs() {
+  if (staleRefsDirs.length === 0) return;
+  console.log('\n实拍态残留的参考图目录：');
+  for (const { dirName, count } of staleRefsDirs) {
+    console.log(`  ℹ️ ${dirName}：已实拍，refs/ 仍存在（${count} 张参考图）`);
+  }
+  console.log(
+    '  💡 参考图的使命（去之前熟悉环境）已结束，确认后自行清理（本脚本不删除任何文件）：',
+  );
+  console.log(`    rm -rf ${staleRefsDirs.map((d) => `"${d.refsDirPath}"`).join(' ')}`);
 }
 
 /** 解析命令行参数（当前只支持 --force）。风格对齐 fix-gps.js / new-place.js：未知参数即报错 */
@@ -842,6 +907,136 @@ async function readPhotoMeta(filePath) {
 }
 
 /**
+ * 路径是否存在（只读）
+ * 只用于把预检的 hint 说得更准（例如"该目录里还有 refs/"），**不参与任何判定**——
+ * 判定点始终是"原图仓有没有媒体文件"这一个（见 preflightDir）。
+ */
+async function pathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * "index.json 缺 description" 的失败结果（实拍态与参考态共用；文案与改造前逐字一致）
+ *
+ * description 是必填契约（用户 2026-10-05 拍板）：要求的是"key 恒存在"而非"必须有
+ * 内容"，故空串合法。hint 必须自足：给出改哪个文件、加什么内容，照做即可跑通。
+ * 见 docs/plans/2026-10-05-new-place-scaffold.md
+ */
+function missingDescriptionResult(dirName, dirPath) {
+  return {
+    dirName,
+    reason: 'index.json 缺少 "description"（或它不是字符串）',
+    hint:
+      '修正后重跑：npm run photos\n' +
+      `    做法：编辑 ${path.join(dirPath, 'index.json')}，` +
+      '补上 "description"（可填空串 ""，也可填展示名）',
+  };
+}
+
+/**
+ * 参考点位（"想去、还没去过"）的文件夹级预检（只读：零写操作）
+ *
+ * 进入条件由调用方判定：**原图仓该点位目录没有媒体文件**、且 index.json 没有
+ * index_photo。判定点唯一，不依赖任何"我是参考点位"的声明字段
+ * （见 docs/plans/2026-10-07-ref-places.md 的 D1）。
+ *
+ * 参考态的两个必要条件，任一不满足即该点位失败（不替人猜、不做兜底）：
+ *   1. `<refs>/point.json` 存在，且 lng / lat 都是**数字**（GCJ02，人填）
+ *   2. `<refs>/` 下至少有一张图片（字典序第一张即 marker 用图）
+ *
+ * 参考态**不允许**出现 index_photo：它此时指着一个不存在的文件，留下就是说谎的
+ * 脏字段（与"宁缺毋假"同口径）⇒ 报错并提示删。**反向不报错**：实拍态还留着 refs/
+ * 只是"上一阶段的遗留文件"，管线不读它，由调用方打一行可清理提示即可。
+ *
+ * @param {string} dirName 文件夹名
+ * @param {string} dirPath data 仓该点位目录
+ * @param {object} indexConfig 已解析的 index.json
+ * @returns {Promise<object>} 合法时含 refImages；否则含 reason / hint
+ */
+async function preflightRefPlace(dirName, dirPath, indexConfig) {
+  if (typeof indexConfig.description !== 'string') {
+    return missingDescriptionResult(dirName, dirPath);
+  }
+
+  const refsDirPath = path.join(dirPath, REFS_SUBDIR);
+
+  // 1. 点位级坐标（人工标注，GCJ02）
+  let point;
+  try {
+    point = JSON.parse(
+      await fs.readFile(path.join(refsDirPath, REF_POINT_FILE), 'utf-8'),
+    );
+  } catch (err) {
+    return {
+      dirName,
+      reason: `参考点位缺少可解析的 ${REFS_SUBDIR}/${REF_POINT_FILE}: ${err.message}`,
+      hint:
+        `参考点位（原图仓还没有照片的点位）必须自带一个点位坐标：${path.join(refsDirPath, REF_POINT_FILE)}\n` +
+        '    内容形如 {"lng": 112.6, "lat": 26.8}，坐标口径 GCJ02\n' +
+        '    （高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，不要用 WGS84）\n' +
+        `    或整条命令重建：npm run new-place -- "${dirName}" --wish --coord "<lng,lat>"`,
+    };
+  }
+  if (!Number.isFinite(point?.lng) || !Number.isFinite(point?.lat)) {
+    return {
+      dirName,
+      reason: `${REFS_SUBDIR}/${REF_POINT_FILE} 的 lng / lat 必须是数字`,
+      hint:
+        `修正后重跑：npm run photos\n` +
+        `    做法：编辑 ${path.join(refsDirPath, REF_POINT_FILE)}，` +
+        '写成 {"lng": 112.6, "lat": 26.8}——**不要写成字符串**（不做隐式转换）',
+    };
+  }
+
+  // 2. 参考环境照（point.json 不进图片清单；参考图不生成派生档位，故也不排除派生后缀之外的任何东西）
+  let refFiles;
+  try {
+    refFiles = await fs.readdir(refsDirPath);
+  } catch (err) {
+    return {
+      dirName,
+      reason: `读取参考图目录失败: ${err.message}`,
+      hint: `确认 ${refsDirPath} 存在后重跑：npm run photos`,
+    };
+  }
+  const refImages = refFiles
+    .filter(
+      (file) =>
+        REF_IMAGE_EXTS.has(path.extname(file).toLowerCase()) &&
+        !isDerivedFile(file),
+    )
+    .sort();
+  if (refImages.length === 0) {
+    return {
+      dirName,
+      reason: `${REFS_SUBDIR}/ 下没有图片文件`,
+      hint:
+        '参考点位至少要有一张参考图——它是地图上可点的"入口图"：\n' +
+        `    做法：把参考图压到 ≈200-250 KB 后放进 ${refsDirPath}/，命名为 01.jpg、02.jpg …\n` +
+        '    （01.jpg 就是地图上显示的那张；压好再入库，写进历史的字节删了也回收不了）\n' +
+        '    sips -Z 1024 -s format jpeg -s formatOptions 70 <下载的图> --out ' +
+        `${path.join(refsDirPath, '01.jpg')}`,
+    };
+  }
+
+  return {
+    dirName,
+    dirPath,
+    indexConfig,
+    point,
+    refImages,
+    // images 显式给空数组：参考态没有"我拍的照片"参与混合来源 / 设备识别汇总，
+    // 空数组让调用方的 `result.images` 真值判定与实拍态保持一致（不必额外分支）
+    images: [],
+  };
+}
+
+/**
  * 文件夹级预检（只读：读 index.json 与 EXIF，绝不写任何文件）
  *
  * 这是"能不能产出"的唯一判定点，排在生成阶段之前——任何失败都在写第一张
@@ -881,6 +1076,52 @@ async function preflightDir(dirName) {
       };
     }
 
+    // 媒体清单取自原图仓，它同时是**阶段判据**：有媒体 = 实拍态、没有 = 参考态。
+    // 读原图仓失败不再就地返回——参考态点位本来就只存在于 data 仓，原图仓没有它是
+    // 正常状态；究竟是不是参考态由下面的分支判定（**带 index_photo 却读不到媒体，
+    // 仍按原口径报错**，防"搬家漏拷"的作用一字不减）。
+    let files = null;
+    let originReadError = null;
+    try {
+      files = await fs.readdir(originDirPath);
+    } catch (err) {
+      originReadError = err;
+    }
+    const mediaFiles = (files || []).filter(
+      (file) =>
+        ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
+        !isDerivedFile(file),
+    );
+
+    if (mediaFiles.length === 0) {
+      if (indexConfig.index_photo) {
+        // 有 index_photo、原图仓却找不到媒体：两种情况，下一步不同，故 hint 要按情况给
+        // （hint 必须自足是本项目纪律）。这里只**补充上下文**，不改变原判定与文案主体。
+        const refsNote = (await pathExists(path.join(dirPath, REFS_SUBDIR)))
+          ? `\n    注意：该点位目录里还有 ${REFS_SUBDIR}/——若它其实还没去过（参考态），` +
+            'index.json 里不该有 index_photo，删掉该键即可恢复参考态'
+          : '';
+        return originReadError
+          ? {
+              dirName,
+              reason: `原图仓中读不到点位目录: ${originReadError.message}`,
+              hint:
+                `确认 ${ORIGIN_DIR}/${dirName} 存在且可读后重跑：npm run photos` +
+                refsNote,
+            }
+          : {
+              dirName,
+              reason: '没有符合格式的媒体文件（jpg / heic / tiff / mp4）',
+              hint: '放入照片或视频后重跑：npm run photos' + refsNote,
+            };
+      }
+      // 没有 index_photo ⇒ 参考态候选（还没去过、只有参考图的点位）
+      return preflightRefPlace(dirName, dirPath, indexConfig);
+    }
+
+    // === 以下为实拍态：逻辑与文案与改造前逐字一致 ===
+    // 唯一的顺序变化：媒体清单的读取提到了 index_photo 校验之前——它是阶段判据，
+    // 必须先知道"有没有媒体"才能分叉。下面的失败文案本身一字未改。
     const coverFileName = indexConfig.index_photo;
     if (!coverFileName) {
       return {
@@ -892,49 +1133,16 @@ async function preflightDir(dirName) {
 
     // description 是必填契约（用户 2026-10-05 拍板）：不接受"字段可缺失"的兼容态，
     // 缺字段即该点位跳过。要求的是"key 恒存在"而非"必须有内容"，故空串合法。
-    // hint 必须自足（用户 2026-10-05 要求）：给出改哪个文件、加什么内容，照做即可跑通。
     // 见 docs/plans/2026-10-05-new-place-scaffold.md
     if (typeof indexConfig.description !== 'string') {
-      return {
-        dirName,
-        reason: 'index.json 缺少 "description"（或它不是字符串）',
-        hint:
-          '修正后重跑：npm run photos\n' +
-          `    做法：编辑 ${path.join(dirPath, 'index.json')}，` +
-          '补上 "description"（可填空串 ""，也可填展示名）',
-      };
+      return missingDescriptionResult(dirName, dirPath);
     }
-
-    // 过滤出媒体文件（图片 + 视频原片；剔除全部派生文件）——取自原图仓
-    let files;
-    try {
-      files = await fs.readdir(originDirPath);
-    } catch (err) {
-      return {
-        dirName,
-        reason: `原图仓中读不到点位目录: ${err.message}`,
-        hint: `确认 ${ORIGIN_DIR}/${dirName} 存在且可读后重跑：npm run photos`,
-      };
-    }
-    const mediaFiles = files.filter(
-      (file) =>
-        ALLOWED_EXTS.has(path.extname(file).toLowerCase()) &&
-        !isDerivedFile(file),
-    );
 
     // 目录里的轨迹文件（.gpx）：**不是媒体**，不进 mediaFiles、不进 output.json，
     // 只用于把"缺坐标"时的提示优先指向 GPX 通道
     const trackFiles = files.filter((file) =>
       TRACK_EXTS.has(path.extname(file).toLowerCase()),
     );
-
-    if (mediaFiles.length === 0) {
-      return {
-        dirName,
-        reason: '没有符合格式的媒体文件（jpg / heic / tiff / mp4）',
-        hint: '放入照片或视频后重跑：npm run photos',
-      };
-    }
 
     // 视频可以当封面（数据层与照片等价，用户 2026-10-04 拍板）：
     // index.json 的 index_photo 就是"任意一张带坐标的原媒体文件名"
@@ -1015,14 +1223,74 @@ async function preflightDir(dirName) {
 }
 
 /**
+ * 参考点位的构建（与 buildGroup 互斥，判定见 preflightDir）
+ *
+ * **零派生图**：参考图一档到底（下载来的图通常 100–300 KB，够当 120px 图钉也够当
+ * Lightbox 大图），因此不引 sharp、不生成第二个档位、不新增第二条生命周期
+ * （见 docs/plans/2026-10-07-ref-places.md 的 D6c）。
+ *
+ * 输出结构与实拍态**同名同形**（lat/lng/dirName/description/references/
+ * thumbnailLink/displayLink/fileName/photos），只多一个 pinKind —— 前端因此可以
+ * 全量复用 marker/抽屉/Lightbox/信息面板，零新组件。
+ *
+ * ⚠️ 坐标系不同源：这里的 lat/lng 是**人工标注的 GCJ02**（原样透传，前端**不得**
+ * 再送 convertFrom），而实拍态的 lat/lng 是照片 EXIF 的 WGS84（前端必须转换）。
+ * 两者靠 pinKind 区分——这是本方案唯一要求前端参与的分支。
+ *
+ * photos[] 里每张参考图共享同一个点位坐标（点位级单一值，不是"每张图各自有定位"）。
+ */
+function buildRefGroup({ dirName, indexConfig, point, refImages }) {
+  const photos = refImages.map((file) => {
+    const link = `${BASE_URL}/${dirName}/${REFS_SUBDIR}/${file}`;
+    return {
+      fileName: `${REFS_SUBDIR}/${file}`,
+      // 一档到底：同一张图既当图钉（浏览器缩到 120px）又当 Lightbox 大图
+      thumbnailLink: link,
+      displayLink: link,
+      lat: point.lat,
+      lng: point.lng,
+    };
+  });
+
+  const cover = photos[0];
+  return {
+    lat: point.lat,
+    lng: point.lng,
+    thumbnailLink: cover.thumbnailLink,
+    displayLink: cover.displayLink,
+    fileName: cover.fileName,
+    dirName,
+    description: indexConfig.description,
+    // references 透传口径与实拍态完全一致（可选、不校验、不排序，见
+    // docs/plans/2026-10-05-point-references.md）——参考点位的"来源链接"就走它
+    ...(Array.isArray(indexConfig.references)
+      ? { references: indexConfig.references }
+      : {}),
+    pinKind: PIN_KIND_REF,
+    photos,
+  };
+}
+
+/**
  * 生成阶段：为通过预检的文件夹生成派生图并聚合数据
  * 元数据全部取自预检结果，不再重复读 EXIF。
- * 双根：**读原图**走 ORIGIN_DIR（由预检给出的 filePath），**写派生图**走 IMGS_DIR
+ * 双根：**读原图**走 ORIGIN_DIR（由预检给出的 filePath）、**写派生图**走 IMGS_DIR
  * （dirPath）——派生图是 Pages 要发布的文件，必须落在 data 仓。
+ * 参考态（refImages 存在）走 buildRefGroup，不生成任何派生图。
  * @param {object} preflight preflightDir 的返回值
  * @returns {Promise<object>} output.json 中的一条文件夹数据
  */
-async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images }) {
+async function buildGroup({
+  dirName,
+  dirPath,
+  indexConfig,
+  coverFileName,
+  images,
+  point,
+  refImages,
+}) {
+  if (refImages) return buildRefGroup({ dirName, indexConfig, point, refImages });
+
   const photos = await Promise.all(
     images.map(async ({ file, filePath, meta }) => {
       const parsed = path.parse(file);
@@ -1141,6 +1409,9 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
   const coverStem = path.parse(coverFileName).name;
   const coverIsVideo = isVideoFile(coverFileName);
 
+  // 切档后忘了收尾的 refs/ 只登记、不报错（收尾统一提示，见 reportStaleRefsDirs）
+  await collectStaleRefsDir(dirName, dirPath);
+
   return {
     lat: cover.lat,
     lng: cover.lng,
@@ -1169,6 +1440,8 @@ async function buildGroup({ dirName, dirPath, indexConfig, coverFileName, images
     ...(Array.isArray(indexConfig.references)
       ? { references: indexConfig.references }
       : {}),
+    // 阶段标记（显式写，不靠前端猜缺省值）：实拍态 = 照片 EXIF 的 WGS84 坐标
+    pinKind: PIN_KIND_PHOTO,
     photos: photos,
   };
 }
@@ -1195,13 +1468,49 @@ async function ensureVideoToolchain() {
 }
 
 /**
+ * 判断 data 仓的某个点位目录是否为**合法参考态**（只读，零写操作）
+ *
+ * 供 resolvePointDirs 区分两种"原图仓没有该点位"的情形：
+ *   ① 参考态（还没去过，本来就只存在于 data 仓）⇒ 放行
+ *   ② 实拍态的原图被删 / 上次搬家漏拷 ⇒ 仍整轮报错
+ *
+ * 判据写死为两条**同时**成立（显式条件，绝不退化成"无条件放行"）：
+ *   1. index.json 里**没有** index_photo —— 有它就说明是实拍态，原图必须存在
+ *   2. refs/point.json 能解析出数字 lng / lat
+ * 刻意不在这里要求"refs/ 下有参考图"：那是 preflightRefPlace 的判定，
+ * 在门口重复判一次只会让"坐标写了但忘了放图"报出"搬家漏拷"这种误导性提示。
+ *
+ * @param {string} dirPath data 仓该点位目录（收路径而非点位名，便于单测传临时目录）
+ */
+async function isRefPlace(dirPath) {
+  try {
+    const indexConfig = JSON.parse(
+      await fs.readFile(path.join(dirPath, 'index.json'), 'utf-8'),
+    );
+    if (indexConfig.index_photo) return false;
+    const point = JSON.parse(
+      await fs.readFile(
+        path.join(dirPath, REFS_SUBDIR, REF_POINT_FILE),
+        'utf-8',
+      ),
+    );
+    return Number.isFinite(point?.lng) && Number.isFinite(point?.lat);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 双根启动预检（AGENTS.md S3：假设环境已就绪，只预检一次，缺失即报错退出，
  * 不做多路兜底）。返回本次要处理的点位目录名列表（两侧取并集）。
  *
  * 规则（本函数**全程只读**，不写任何文件/目录）：
  * - 两个根目录都必须存在，否则报错退出并附建立提示
- * - 只在 **data 侧** 存在的点位 → 报错退出：原图是管线唯一的输入源，
- *   原图仓缺该点位就无从读原图（且极可能是上次搬家漏拷）
+ * - 只在 **data 侧** 存在、且**不是合法参考态**的点位 → 报错退出：原图是管线唯一的
+ *   输入源，原图仓缺该点位就无从读原图（且极可能是上次搬家漏拷）。
+ *   **参考态是例外**（2026-10-07 新增）："还没去过"的点位本来就只存在于 data 仓，
+ *   它的判定条件是显式的（无 index_photo + refs/point.json 坐标合法，见 isRefPlace），
+ *   不是无条件放行——防漏拷的作用因此不减。
  * - 只在 **原图仓** 存在的点位 → 不做任何写入，该点位照常进入文件夹级预检，
  *   并因缺 index.json 被跳过（跳过语义与其它失败点位一致）。原先会在此建空目录，
  *   已移除——理由见 docs/plans/2026-10-05-photos-no-empty-dir.md
@@ -1237,13 +1546,31 @@ async function resolvePointDirs() {
   ]);
   const originSet = new Set(originDirs);
 
+  // 「只在 data 仓存在」的点位分两类（2026-10-07）：
+  //   - 合法参考态（还没去过）⇒ 放行：它本来就只存在于 data 仓
+  //   - 其余（实拍态的原图被删 / 上次搬家漏拷）⇒ 保留整轮报错，防漏拷作用不减
   const onlyInData = dataDirs.filter((name) => !originSet.has(name));
-  if (onlyInData.length > 0) {
-    throw new Error(
-      `${onlyInData.length} 个点位在 data 仓有目录、原图仓却没有：` +
-        `${onlyInData.join('、')}\n` +
-        `原图是管线唯一的输入源，请把这些点位的原图放进 ${ORIGIN_DIR}/ 下的同名目录后重跑。`,
-    );
+  const offenders = [];
+  for (const name of onlyInData) {
+    if (!(await isRefPlace(path.join(IMGS_DIR, name)))) offenders.push(name);
+  }
+  if (offenders.length > 0) {
+    const lines = [
+      `${offenders.length} 个点位在 data 仓有目录、原图仓却没有：${offenders.join('、')}`,
+      `原图是管线唯一的输入源，请把这些点位的原图放进 ${ORIGIN_DIR}/ 下的同名目录后重跑。`,
+      '（若其中有点位是"还没去过"的参考点位，它需要 index.json 无 index_photo ' +
+        '且 refs/point.json 坐标合法才算合法参考态：见 docs/photo-ops.md）',
+    ];
+    // 带 refs/ 的目录是"参考态被改坏"的典型形态，逐点位给出可操作的判据
+    for (const name of offenders) {
+      if (await pathExists(path.join(IMGS_DIR, name, REFS_SUBDIR))) {
+        lines.push(
+          `    💡 ${name}：该目录里有 ${REFS_SUBDIR}/（参考态痕迹）——参考态的判据是` +
+            ` refs/${REF_POINT_FILE} 里 lng/lat 是数字、且 index.json 里**没有** index_photo`,
+        );
+      }
+    }
+    throw new Error(lines.join('\n'));
   }
 
   // 「只在原图仓存在」的点位不在这里处理：它留在下面的并集里，由文件夹级预检
@@ -1341,8 +1668,17 @@ async function processAllPhotos() {
 
     // 6. 设备类型识别汇总（只报告，不影响退出码）
     if (results.length > 0) {
-      reportDeviceTypes(results.flatMap((group) => group.photos));
+      // 参考态不参与：参考图不是我拍的、也没有 device 字段，计入只会把"未识别 N 张"
+      // 变成噪声——它不是设备分类表该补的东西
+      reportDeviceTypes(
+        results
+          .filter((group) => group.pinKind !== PIN_KIND_REF)
+          .flatMap((group) => group.photos),
+      );
     }
+
+    // 6.4 实拍态残留 refs/ 提示（只报告，不影响退出码；无残留时不打印）
+    reportStaleRefsDirs();
 
     // 6.5 混合来源点位提示（只报告，不影响退出码）
     if (ready.length > 0) {
@@ -1389,6 +1725,8 @@ if (require.main === module) {
 // derivedIsUpToDate 只读文件系统（不写不删），单测用临时目录 + fs.utimes 锁其语义边界。
 // parseGeoTag / TRACK_EXTS / 设备映射表导出，供 test/geo-provenance.test.js 断言
 // 它们与 fix-gps.js 的副本同值同行为（两边各存一份、刻意不抽共享模块）。
+// 参考态一族（isRefPlace / preflightRefPlace / buildRefGroup）一并导出：它们都收
+// 完整路径或纯数据参数，单测可在临时目录里跑，不必碰真仓库（test/ref-places.test.js）。
 module.exports = {
   normalizeExifDateTime,
   stripTimezoneSuffix,
@@ -1404,4 +1742,12 @@ module.exports = {
   PHONE_MAKES,
   CAMERA_MAKES,
   TRACK_EXTS,
+  isRefPlace,
+  preflightRefPlace,
+  buildRefGroup,
+  REFS_SUBDIR,
+  REF_POINT_FILE,
+  REF_IMAGE_EXTS,
+  PIN_KIND_PHOTO,
+  PIN_KIND_REF,
 };

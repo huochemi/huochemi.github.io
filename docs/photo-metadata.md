@@ -335,6 +335,16 @@ GPSLatitude**——对已有原生 GPS 的视频再用 fix-gps 写法写不同�
   一律 WGS84。GCJ02（高德火星坐标）**只允许出现在"紧贴地图渲染"的显示层**——主站
   经 `AMap.convertFrom` 在线转换，fix-gps 审阅页经 `wgs84ToGcj02()`（fix-gps.js 内嵌
   纯算法，node 侧离线算）在**生成 data 时**为每个锚点附加 `gcjLat` / `gcjLng` 两个字段
+- **唯一例外：人手填的点位坐标存 GCJ02、不做换算**（2026-10-07，参考点位）。这类坐标
+  （`../data/photos/<点位>/refs/point.json`，见 `photo-ops.md`「参考点位」）与
+  `cities.js` 的城市落点是**同一类数据**：来源都是高德坐标拾取器、用途都是"直给高德
+  显示"，所以存它原生的 GCJ02、前端**不再**过 `convertFrom`（再转一次就是二次偏移）。
+  判据收敛成两句话：**人手填的一律 GCJ02；照片 EXIF 的一律 WGS84 并换算**。
+  两者在同一个 `output.json` 里靠 `pinKind` 区分（`photo` = EXIF/WGS84、
+  `ref` = 手填/GCJ02）。⇒ `pinKind` 不是装饰字段，而是**坐标通道开关**：全站唯一一处
+  "字段同名、坐标系不同源"，改它或加新通道时必须同步前端两个转换分支
+  （`MapChildren.jsx` 的 marker 落点、`LightboxInfoPanel.jsx` 的高德链接）。
+  境外沿用既有例外：偏置只对境内坐标有定义，境外直接填 WGS84 即可
 - **审阅页数据契约**：`anchors[]` 项的 `lat` / `lng` 永远是 WGS84 原值，`gcjLat` /
   `gcjLng` 是仅供第 5 区底图落点的派生值——两者共存，改代码时不得让后者覆盖前者
   （覆盖即坐标污染，写入链路读的是 WGS84 那对）

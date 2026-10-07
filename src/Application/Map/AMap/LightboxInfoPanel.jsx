@@ -14,20 +14,25 @@ const gcjCache = new Map();
 
 // 外部参考链接的类别标签（点位级，见 docs/plans/2026-10-05-point-references.md）。
 // 只决定显示文字：未收录的 kind 原样显示，不做猜测也不隐藏——坏数据要看得见。
+// 参考点位的"来源"走同一套 references，最常见的类别是视频（拍车视频）与图片。
 const REF_KIND_LABELS = {
   data: '数据',
   chart: '航图',
   article: '文章',
+  video: '视频',
+  image: '图片',
 };
 
 /**
  * Lightbox 右侧信息面板（方案 B，docs/plans/2026-09-27-lightbox-info-panel.md）
  *
  * @param {object} AMap - 高德 JS API 对象（供 convertFrom 坐标转换）
- * @param {object} photo - 当前照片（lat/lng/takenAt，WGS84）
+ * @param {object} photo - 当前照片（lat/lng/takenAt，实拍为 WGS84）
  * @param {string} groupName - 所属文件夹名（dirName）
  * @param {string} groupDescription - 文件夹描述（仅文件夹分组模式有）
  * @param {Array} groupReferences - 点位级外部参考链接（可选字段，缺省即该点位无链接）
+ * @param {string} groupPinKind - 点位阶段标记（'ref' = 还没去过的参考点位，缺省即实拍）。
+ *   必须是**组级**而非照片级的字段——参考图是 photos[] 的项，项上没有它
  * @param {boolean} isCover - 是否为所属文件夹的封面（封面不可删除）
  * @param {boolean} open - 面板展开态（父组件的 "ⓘ" 按钮控制）
  */
@@ -37,6 +42,7 @@ function LightboxInfoPanel({
   groupName,
   groupDescription,
   groupReferences,
+  groupPinKind,
   isCover,
   open,
 }) {
@@ -49,11 +55,20 @@ function LightboxInfoPanel({
 
   const hasCoord =
     photo && typeof photo.lat === 'number' && typeof photo.lng === 'number';
+  // 参考点位（PinKind 'ref'，还没去过的点位）：坐标是建点位时人工标注的 GCJ02
+  const isRef = groupPinKind === 'ref';
 
-  // 当前照片坐标变化时转换 GCJ02（官方 convertFrom，与 MapChildren marker 用同一通道）
+  // 坐标通道分两条（口径必须与 MapChildren 的 marker 落点一致，否则链接与图钉会错位）：
+  //  - 实拍点位：照片 EXIF 是 WGS84 ⇒ convertFrom 转成 GCJ02 再用
+  //  - 参考点位：本来就是 GCJ02 ⇒ **直接使用，绝不能再进 convertFrom**（二次偏移）
   useEffect(() => {
     if (!open || !hasCoord) {
       setGcj02(null);
+      return;
+    }
+
+    if (isRef) {
+      setGcj02({ lng: photo.lng, lat: photo.lat });
       return;
     }
 
@@ -82,7 +97,7 @@ function LightboxInfoPanel({
     return () => {
       cancelled = true;
     };
-  }, [AMap, open, photo, hasCoord]);
+  }, [AMap, open, photo, hasCoord, isRef]);
 
   const handleCopy = async () => {
     if (!hasCoord) return;
@@ -103,8 +118,11 @@ function LightboxInfoPanel({
 
   // 删除命令：由 UI 已有字段组装，不含本机路径（公网 bundle 不留本机信息）。
   // 需在站点仓库根目录执行，文案在下方说明。
+  //
+  // ⚠️ 参考点位**不给**这条命令：del-photo 只认原图仓 / 派生图体系，参考图既不在
+  // 原图仓、也没有派生图，照给必然失败（见 docs/plans/2026-10-07-ref-places.md 洞 #1）。
   const deleteCommand =
-    groupName && photo.fileName
+    !isRef && groupName && photo.fileName
       ? `npm run del-photo -- "${groupName}" "${photo.fileName}"`
       : '';
 
@@ -119,10 +137,26 @@ function LightboxInfoPanel({
     }
   };
 
+  // 链接里显示的地点名：实拍态沿用原文案「拍摄位置」（零回归）；
+  // 参考点位用点位名，用户在高德里一眼能认出是哪个点位
+  const linkName = isRef ? groupName || '参考点位' : '拍摄位置';
+
   const amapUrl = gcj02
     ? `https://uri.amap.com/marker?position=${gcj02.lng},${gcj02.lat}&name=${encodeURIComponent(
-        '拍摄位置',
+        linkName,
       )}`
+    : null;
+
+  // 「导航到此」（2026-10-07 从高德官方 URI API 文档核实参数形态）：
+  //  - 起点（from）留空 ⇒ 移动端自动使用当前位置（官方明确该自动定位仅移动端生效）
+  //  - callnative=1 仅移动端会尝试唤起高德 App；官方提示微信/QQ 内置浏览器无法调起，
+  //    所以到现场要用系统浏览器/Safari 打开站点。PC 端只会打开网页版路线规划页
+  //  - 坐标必须是 GCJ02（上面两条通道已统一）；不做"是否装了 App"的探测（S3）
+  // 实拍点位共用这个按钮（去过的点位也可能再去），不是参考点位专属
+  const navUrl = gcj02
+    ? `https://uri.amap.com/navigation?to=${gcj02.lng},${gcj02.lat},${encodeURIComponent(
+        linkName,
+      )}&mode=car&policy=0&src=huochemi&callnative=1`
     : null;
 
   return (
@@ -133,7 +167,7 @@ function LightboxInfoPanel({
       <div className={styles.section}>
         <div className={styles.label}>拍摄时间</div>
         <div className={styles.value}>
-          {formatTakenAtFull(photo.takenAt) || '—'}
+          {isRef ? '未知（参考图）' : formatTakenAtFull(photo.takenAt) || '—'}
         </div>
       </div>
 
@@ -146,7 +180,11 @@ function LightboxInfoPanel({
 
       {hasCoord && (
         <div className={styles.section}>
-          <div className={styles.label}>GPS 坐标（WGS84）</div>
+          {/* 参考点位的坐标是**人工标注的点位坐标**（GCJ02），不是某张图自带的
+              EXIF 定位——标题必须说实话，否则以后自己都会被骗（宁缺毋假） */}
+          <div className={styles.label}>
+            {isRef ? '点位坐标（人工标注，GCJ02）' : 'GPS 坐标（WGS84）'}
+          </div>
           <div className={styles.coordRow}>
             <span className={styles.value}>
               {formatCoord(photo.lat)}, {formatCoord(photo.lng)}
@@ -159,15 +197,34 @@ function LightboxInfoPanel({
               {copied ? '已复制' : '复制'}
             </button>
           </div>
+          {isRef && (
+            <div className={styles.desc}>
+              该点位还没有实拍照片，这个坐标是建点位时人工标注的；该点位的参考图
+              共享它（不是"每张图各自的定位"）。
+            </div>
+          )}
           {amapUrl ? (
-            <a
-              className={styles.amapLink}
-              href={amapUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              在高德地图中查看 ↗
-            </a>
+            <div className={styles.actionRow}>
+              <a
+                className={styles.amapLink}
+                href={amapUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                在高德地图中查看 ↗
+              </a>
+              {/* 导航按钮：实拍点位同样出现（去过的点位也可能再去），非参考点位专属 */}
+              {navUrl && (
+                <a
+                  className={styles.navLink}
+                  href={navUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  导航到此 ↗
+                </a>
+              )}
+            </div>
           ) : (
             <span className={styles.coordHint}>坐标转换中…</span>
           )}
@@ -186,10 +243,14 @@ function LightboxInfoPanel({
 
       {/* 延伸阅读：点位级外部参考链接（docs/plans/2026-10-05-point-references.md）。
           刻意不校验、不过滤——缺 label 就是空标题、缺 url 就是坏链接，肉眼可见才会被修；
-          静默跳过坏数据反而藏住笔误。无 references 时整个区块不渲染（不留空壳）。 */}
+          静默跳过坏数据反而藏住笔误。无 references 时整个区块不渲染（不留空壳）。
+          参考点位把标题换成「参考来源」：那些链接就是这批参考图的出处（同为 references
+          字段，不新增第二种结构）。 */}
       {groupReferences?.length > 0 && (
         <div className={styles.section}>
-          <div className={styles.label}>延伸阅读</div>
+          <div className={styles.label}>
+            {isRef ? '参考来源' : '延伸阅读'}
+          </div>
           {groupReferences.map((ref, index) => (
             <a
               key={`${index}-${ref.url}`}
@@ -208,7 +269,8 @@ function LightboxInfoPanel({
       )}
 
       {/* 删除区块（docs/plans/2026-09-30-photo-deletion-workflow.md）：
-          封面不可删除（脚本也会按 index_photo 硬拦），故封面态不给复制按钮 */}
+          封面不可删除（脚本也会按 index_photo 硬拦），故封面态不给复制按钮。
+          参考点位不会走到这里——上面组装 deleteCommand 时已为它置空（洞 #1） */}
       {deleteCommand && (
         <div className={styles.section}>
           <div className={styles.label}>
