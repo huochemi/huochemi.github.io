@@ -652,10 +652,20 @@ async function verifyGps(target, expected) {
   }
 }
 
-/** 锚点通道：从参照（手机照片）**复制**坐标与高程，溯源标记 mode=anchor */
+/**
+ * 锚点通道：从参照（手机照片）**复制**坐标与高程，溯源标记 mode=anchor。
+ *
+ * 必须带 `-n`（2026-10-07 补）：`-tagsfromfile` 复制 rational 标签时，不加 `-n` 会走
+ * **打印格式**，把 GPSAltitude 截成一位小数（实测 69.84174921 → 69.8）；而经纬度走的
+ * 是另一条保真通路、不受影响 —— 「经纬度对、海拔被削」这种半边损失不会报错、不易察觉。
+ * 原片 EXIF 写入不可回溯，故写入端一律保真、舍入留给展示层。轨迹通道
+ * writeGpsFromTrack 一开始就带 `-n`，此处补齐是为了两条通道同口径；
+ * 控制点见 test/gps-altitude-precision.test.js。
+ */
 async function writeGps(target, ref) {
   const args = [
     '-overwrite_original',
+    '-n',
     '-tagsfromfile',
     ref.filePath,
     '-GPSLatitude',
