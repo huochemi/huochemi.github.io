@@ -24,7 +24,8 @@
 - `delete-photo.js`：原图删 `ORIGIN_DIR`、派生文件删 `IMGS_DIR`；**两个根都要有该
   点位目录**，缺一即报错退出（不静默删一半）
 - 一致性检查（孤儿派生文件）的配对基准取自 `ORIGIN_DIR`——基准取错会让全部派生文件
-  被误报成孤儿
+  被误报成孤儿；2026-10-09 起**顶层孤儿由 `npm run photos` 自动清理**，但**读不到原图
+  目录即整轮零删除**（两道闸门见 `photo-ops.md`）
 
 启动预检（S3：只预检一次、缺失即报错退出、不做兜底）：两个根都必须存在；**双根扫描
 全程只读**（2026-10-05 起：原先"只在原图仓有点位"会在 data 侧建空目录，已移除——空目录
@@ -251,7 +252,8 @@ ffmpeg -c:v libx264 -crf 30 -preset medium -pix_fmt yuv420p \
   `test/geo-provenance.test.js` 锁两处同值、且断言两个 `ALLOWED_EXTS` 都不含 `.gpx`
 - 决策记录：`docs/plans/2026-10-07-gpx-coordinate-channel.md`
 
-## 删除照片 / 数据一致性报告
+## 删除照片 / 数据一致性检查与清理
 
 2026-10-05 拆出 → **`docs/photo-ops.md`**（本文件超 200 行，按 AGENTS.md 按域拆分）：
-`npm run del-photo` 的流程与约定、`npm run photos` 末尾「数据一致性检查」的口径。
+`npm run del-photo` 的流程与约定、`npm run photos` 末尾「数据一致性检查与清理」的口径
+（2026-10-09 起顶层孤儿自动清理 + 两道硬闸门）。

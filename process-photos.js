@@ -457,95 +457,203 @@ async function generateVideoThumbnail(sourcePath, outputPath, durationSeconds) {
 }
 
 /**
- * 数据一致性检查（只报告：不修改任何文件、不改变退出码、不调用外部命令）
+ * 扫描某层目录的孤儿派生文件（**纯读写、零删除**；抽成独立函数以便单测在临时目录里跑）。
  *
- * 检查项：孤儿派生文件——`_thumb.webp` / `_display.avif` / `_web.mp4` 找不到同名原媒体。
- * 它们会随 data 仓库一起部署，既占体积也说明原图已被删除（管线不清理它们）。
- * 报告用 ❗ 前缀而非 ⏭️，与"未通过预检的文件夹"这一层判定区分开
- * （后者会改退出码，孤儿文件只报告、不改退出码）。
+ * 判定：源媒体基名集合取自 `originDirPath`（原图仓），派生目录里"基名不在集合里"的
+ * 派生文件即孤儿。双根说明——派生文件在 IMGS_DIR、配对基准（原媒体）在 ORIGIN_DIR，
+ * 否则形态 B 之后全部派生文件都会被误报成孤儿。
  *
- * 双根说明：派生文件在 IMGS_DIR、原媒体（配对基准）在 ORIGIN_DIR——基名必须
- * 从原图仓取，否则形态 B 之后全部派生文件都会被误报成孤儿。
+ * `failLoud` 决定"原图目录读不到"怎么办（这是本函数唯一的语义分叉）：
+ * - `true`（点位目录**顶层**用）：返回 `readError`，调用方据此**停手不删任何文件**。
+ *   顶层目录读不到几乎必是异常，"读不到"与"里面确实没有"不可混为一谈。
+ * - `false`（`refs/` 一层用）：按空清单处理。`refs/` 目录不存在是**正常态**（实拍态
+ *   根本不用参考图），故这一层维持"只报告"。
  *
- * @param {string[]} dirNames 照片文件夹名列表
+ * @param {string} originDirPath 原图仓里该层目录（配对基准）
+ * @param {string} derivedDirPath data 仓里该层目录（派生图所在）
+ * @param {Set<string>} exts 源媒体扩展名白名单
+ * @param {{failLoud: boolean, label: string}} opts label 供报告显示
+ * @returns {Promise<{label: string, readError: Error|null, total: number,
+ *   orphans: {file: string, fullPath: string}[]}>}
  */
-async function reportInconsistencies(dirNames) {
-  const orphans = [];
-  const suffixes = DERIVED_SUFFIXES;
+async function scanOrphans(originDirPath, derivedDirPath, exts, { failLoud, label }) {
+  const result = { label, readError: null, total: 0, orphans: [] };
 
-  // 收集某源目录的"源媒体基名"集合：只认给定扩展名白名单、排除派生后缀。
-  // 源媒体（配对基准）一律从原图仓取——否则形态 B 之后全部派生文件会被误报成孤儿。
-  const collectStems = async (originPath, exts) => {
-    let files = [];
-    try {
-      files = await fs.readdir(originPath);
-    } catch {
-      // 原图仓缺该目录：基名为空，下面会如实报孤儿——那是真问题，不该静默
+  let originFiles;
+  try {
+    originFiles = await fs.readdir(originDirPath);
+  } catch (err) {
+    if (failLoud) {
+      result.readError = err;
+      return result;
     }
-    const stems = new Set();
-    for (const file of files) {
-      if (exts.has(path.extname(file).toLowerCase()) && !isDerivedFile(file)) {
-        stems.add(path.parse(file).name);
-      }
-    }
-    return stems;
-  };
-
-  // 在派生目录里找出"源基名集合里没有"的派生文件，登记为孤儿。
-  // 派生目录不存在（点位已在主流程报错 / 该点位没有 refs/）即跳过，不重复报。
-  const collectOrphans = async (derivedPath, stems, label) => {
-    let files = [];
-    try {
-      files = await fs.readdir(derivedPath);
-    } catch {
-      return;
-    }
-    for (const file of files) {
-      const suffix = suffixes.find((s) => file.endsWith(s));
-      if (!suffix) continue;
-      const stem = file.slice(0, -suffix.length);
-      if (!stems.has(stem)) {
-        orphans.push({ label, file, fullPath: path.join(derivedPath, file) });
-      }
-    }
-  };
-
-  for (const dirName of dirNames) {
-    const dirPath = path.join(IMGS_DIR, dirName);
-    const originDirPath = path.join(ORIGIN_DIR, dirName);
-
-    // 顶层：实拍态派生图（源媒体 = 原图仓顶层的照片/视频白名单）
-    await collectOrphans(
-      dirPath,
-      await collectStems(originDirPath, ALLOWED_EXTS),
-      dirName,
-    );
-
-    // refs/ 一层：参考态派生图（源媒体 = 原图仓 refs/ 里的参考图）。
-    // 单独多扫一个**已知**子目录，不违背"顶层媒体清单不下钻"这条前提。
-    await collectOrphans(
-      path.join(dirPath, REFS_SUBDIR),
-      await collectStems(path.join(originDirPath, REFS_SUBDIR), REF_IMAGE_EXTS),
-      `${dirName}/${REFS_SUBDIR}`,
-    );
+    originFiles = [];
   }
 
-  console.log('\n数据一致性检查：');
-  if (orphans.length === 0) {
-    console.log('  ✅ 未发现孤儿派生文件。');
-    return;
+  // 源媒体基名集合：只认给定扩展名白名单、排除派生后缀
+  const stems = new Set();
+  for (const file of originFiles) {
+    if (exts.has(path.extname(file).toLowerCase()) && !isDerivedFile(file)) {
+      stems.add(path.parse(file).name);
+    }
   }
 
-  console.log(
-    color.yellow(
-      `  ❗ 发现 ${orphans.length} 个孤儿派生文件（无对应原图，会随 data 仓库一起部署）：`,
+  let derivedFiles;
+  try {
+    derivedFiles = await fs.readdir(derivedDirPath);
+  } catch {
+    return result; // data 侧无此目录（点位只在原图仓）⇒ 没有派生图可清
+  }
+
+  for (const file of derivedFiles) {
+    const suffix = DERIVED_SUFFIXES.find((s) => file.endsWith(s));
+    if (!suffix) continue;
+    result.total += 1;
+    const stem = file.slice(0, -suffix.length);
+    if (!stems.has(stem)) {
+      result.orphans.push({ file, fullPath: path.join(derivedDirPath, file) });
+    }
+  }
+  return result;
+}
+
+/**
+ * 孤儿清理的**决策纯函数**（无 IO）：给出各层扫描结果，判定本轮"删什么 / 停不停手"。
+ *
+ * 两道闸门（命中即**整轮零删除**，不做"跳过坏点位、其余照删"的部分分支——少一条规则、
+ * 少一处判断；用户 2026-10-09 口径）：
+ * - 一 · 读失败：任一层 `readError` 非空 ⇒ 停手。判定基准不可信时，绝不删任何文件。
+ * - 二 · 会删空：某点位的派生文件**全部**是孤儿（该点位将被清空）⇒ 停手。整组下线是
+ *   另一个量级的决定，沿用 del-photo 的「删后为空」纪律（docs/photo-ops.md）。
+ *
+ * @param {Awaited<ReturnType<typeof scanOrphans>>[]} scans
+ * @returns {{halt: null | {kind: 'read'|'empty', points: object[]}, deletions: object[]}}
+ */
+function decideCleanup(scans) {
+  const readFailures = scans.filter((s) => s.readError);
+  if (readFailures.length > 0) {
+    return { halt: { kind: 'read', points: readFailures }, deletions: [] };
+  }
+
+  const wouldEmpty = scans.filter(
+    (s) => s.orphans.length > 0 && s.orphans.length === s.total,
+  );
+  if (wouldEmpty.length > 0) {
+    return { halt: { kind: 'empty', points: wouldEmpty }, deletions: [] };
+  }
+
+  const deletions = scans.flatMap((s) =>
+    s.orphans.map((o) => ({ label: s.label, file: o.file, fullPath: o.fullPath })),
+  );
+  return { halt: null, deletions };
+}
+
+/**
+ * 数据一致性检查与清理（`npm run photos` 收尾的第 5 步）。
+ *
+ * - **顶层**（实拍态派生图，基准 = 原图仓顶层）：**自动清理**孤儿——原图已删、派生图
+ *   残留的文件（只认 `_thumb.webp` / `_display.avif` / `_web.mp4` 三种后缀，绝不动
+ *   `index.json`、`point.json` 或目录本身）。清理前先过两道闸门（见 `decideCleanup`），
+ *   任一命中即本轮零删除、退出码置 1。
+ * - **`refs/` 一层**（参考态派生图，基准 = 原图仓 `refs/`）：**维持只报告**，末附可复制
+ *   的 `rm`。不并入自动清理的理由：`refs/` 目录不存在属正常态，要自动清理就得再区分
+ *   ENOENT（正常，可清）与 EACCES（异常，停手），又是一套失败分类。
+ *
+ * 决策依据与实测（读取失败被吞成空清单 ⇒ 好图被判可删）见
+ * docs/plans/2026-10-09-photos-orphan-prune.md。
+ *
+ * @param {string[]} dirNames 点位目录名列表
+ */
+async function reportAndCleanup(dirNames) {
+  const topScans = await Promise.all(
+    dirNames.map((dirName) =>
+      scanOrphans(
+        path.join(ORIGIN_DIR, dirName),
+        path.join(IMGS_DIR, dirName),
+        ALLOWED_EXTS,
+        { failLoud: true, label: dirName },
+      ),
     ),
   );
-  for (const orphan of orphans) {
-    console.log(`    ${orphan.label}/${orphan.file}`);
+
+  console.log('\n数据一致性检查与清理：');
+
+  const { halt, deletions } = decideCleanup(topScans);
+  if (halt) {
+    // 停手 ≠ 硬退：只置退出码，后面的报告（设备类型 / refs/ 残留 / 混合来源）照常打印
+    process.exitCode = 1;
+    if (halt.kind === 'read') {
+      console.log(
+        color.red(
+          `  ⛔ 有 ${halt.points.length} 个点位的原图目录读不到，` +
+            '本轮未清理任何文件（无法确认哪些派生图是多余的）：',
+        ),
+      );
+      for (const s of halt.points) {
+        console.log(`    ${s.label}：${s.readError.message}`);
+      }
+      console.log('    确认该目录存在且可读后重跑：npm run photos');
+    } else {
+      console.log(
+        color.red(
+          `  ⛔ 有 ${halt.points.length} 个点位的派生图将被全部清空（原图仓已无对应原片），` +
+            '本轮未清理任何文件：',
+        ),
+      );
+      for (const s of halt.points) {
+        console.log(`    ${s.label}：${s.total} 个派生文件将被清空`);
+      }
+      console.log('     整组下线请手动执行（两处目录一起删）：');
+      for (const s of halt.points) {
+        console.log(
+          `       rm -rf "${path.join(IMGS_DIR, s.label)}" "${path.join(ORIGIN_DIR, s.label)}"`,
+        );
+      }
+      console.log('     若只是临时把原片挪走了，放回后重跑本命令即可。');
+    }
+  } else if (deletions.length === 0) {
+    console.log('  ✅ 未发现孤儿派生文件。');
+  } else {
+    for (const d of deletions) {
+      await fs.unlink(d.fullPath);
+    }
+    console.log(`  ✅ 已清理 ${deletions.length} 个孤儿派生文件（原图已删、派生图残留）：`);
+    // 逐点位计数（102 个文件逐行打印是噪声；计数已足够核对 git status）
+    const byLabel = new Map();
+    for (const d of deletions) {
+      byLabel.set(d.label, (byLabel.get(d.label) || 0) + 1);
+    }
+    for (const [label, count] of byLabel) {
+      console.log(`    ${label}：${count} 个文件`);
+    }
   }
-  console.log('  💡 确认后自行清理（本脚本不删除任何文件）：');
-  console.log(`    rm ${orphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
+
+  // refs/ 一层：维持只报告（不自动清理，理由见函数头注释）
+  const refScans = await Promise.all(
+    dirNames.map((dirName) =>
+      scanOrphans(
+        path.join(ORIGIN_DIR, dirName, REFS_SUBDIR),
+        path.join(IMGS_DIR, dirName, REFS_SUBDIR),
+        REF_IMAGE_EXTS,
+        { failLoud: false, label: `${dirName}/${REFS_SUBDIR}` },
+      ),
+    ),
+  );
+  const refOrphans = refScans.flatMap((s) =>
+    s.orphans.map((o) => ({ label: s.label, file: o.file, fullPath: o.fullPath })),
+  );
+  if (refOrphans.length > 0) {
+    console.log(
+      color.yellow(
+        `  ❗ 发现 ${refOrphans.length} 个孤儿参考图派生文件（原图仓 refs/ 里已无对应源图）：`,
+      ),
+    );
+    for (const o of refOrphans) {
+      console.log(`    ${o.label}/${o.file}`);
+    }
+    console.log('  💡 refs/ 一层维持"只报告"（不自动清理），确认后自行清理：');
+    console.log(`    rm ${refOrphans.map((o) => `"${o.fullPath}"`).join(' ')}`);
+  }
 }
 
 // 设备识别汇总用：未识别的 "Make / Model" 组合（去重收集，逐张不刷屏）
@@ -1822,8 +1930,9 @@ async function processAllPhotos() {
       await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2), 'utf-8');
     }
 
-    // 5. 数据一致性检查（只报告，不影响退出码）
-    await reportInconsistencies(subDirs.map((dir) => dir.name));
+    // 5. 数据一致性检查与清理：顶层自动清理孤儿派生图，但两道闸门（读失败 / 会删空）
+    //    命中时本轮零删除并置退出码 1；refs/ 一层维持只报告
+    await reportAndCleanup(subDirs.map((dir) => dir.name));
 
     // 6. 设备类型识别汇总（只报告，不影响退出码）
     if (results.length > 0) {
@@ -1886,6 +1995,8 @@ if (require.main === module) {
 // 它们与 fix-gps.js 的副本同值同行为（两边各存一份、刻意不抽共享模块）。
 // 参考态一族（isRefPlace / preflightRefPlace / buildRefGroup）一并导出：它们都收
 // 完整路径或纯数据参数，单测可在临时目录里跑，不必碰真仓库（test/ref-places.test.js）。
+// scanOrphans（只读）与 decideCleanup（纯函数）导出，供 test/orphan-prune.test.js 在
+// 临时目录里锁住两道闸门（读失败 / 会删空即零删除）与后缀白名单。
 module.exports = {
   normalizeExifDateTime,
   stripTimezoneSuffix,
@@ -1904,6 +2015,8 @@ module.exports = {
   isRefPlace,
   preflightRefPlace,
   buildRefGroup,
+  scanOrphans,
+  decideCleanup,
   REFS_SUBDIR,
   REF_POINT_FILE,
   REF_IMAGE_EXTS,

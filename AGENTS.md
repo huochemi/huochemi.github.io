@@ -102,7 +102,7 @@ agent 本会话自建的临时文件）。
   改代码）→ `docs/agent-env.md`
 - 测试（CRA jest 与 CLI 单测两条链、jsdom 测内联脚本、`src` 内 CJS 可测形态）→ `docs/testing.md`
 - 照片管线（HEIC 转码、双根 `ORIGIN_DIR`/`IMGS_DIR`、缩略图与展示图档位 AVIF、视频转码）→ `docs/data-pipeline.md`
-- 照片运维（`npm run del-photo` 删除照片、数据一致性报告）→ `docs/photo-ops.md`
+- 照片运维（`npm run del-photo` 删除照片、数据一致性检查与清理）→ `docs/photo-ops.md`
 - 照片元数据（GPS 硬拦口径、坐标溯源 `geoSource`、设备 `device` 分类）→ `docs/photo-metadata.md`
 - 拍摄与整理工作流 / 产品定义（手机锚点照、相机主体、标准流程）→ `docs/photo-workflow.md`
 - 应用结构 / demo 分发机制 → `docs/app-structure.md`
