@@ -1447,6 +1447,407 @@
     ]
   },
   {
+    "lat": 32.111672222222225,
+    "lng": 118.74366666666667,
+    "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5763_thumb.webp",
+    "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5763_display.avif",
+    "fileName": "IMG_5763.HEIC",
+    "dirName": "南京长江大桥玻璃栈桥",
+    "description": "南京长江大桥玻璃栈桥",
+    "takenAt": "2026-10-02T17:15:43",
+    "pinKind": "photo",
+    "photos": [
+      {
+        "fileName": "DSC04823.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04823_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04823_display.avif",
+        "lat": 32.11004722222222,
+        "lng": 118.74471944444444,
+        "takenAt": "2026-10-02T17:01:30",
+        "device": "camera",
+        "geoSource": "IMG_5744.JPG"
+      },
+      {
+        "fileName": "DSC04824.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04824_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04824_display.avif",
+        "lat": 32.11004722222222,
+        "lng": 118.74471944444444,
+        "takenAt": "2026-10-02T17:01:31",
+        "device": "camera",
+        "geoSource": "IMG_5744.JPG"
+      },
+      {
+        "fileName": "DSC04825.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04825_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04825_display.avif",
+        "lat": 32.11004722222222,
+        "lng": 118.74471944444444,
+        "takenAt": "2026-10-02T17:01:34",
+        "device": "camera",
+        "geoSource": "IMG_5744.JPG"
+      },
+      {
+        "fileName": "DSC04826.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04826_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04826_display.avif",
+        "lat": 32.11004722222222,
+        "lng": 118.74471944444444,
+        "takenAt": "2026-10-02T17:01:36",
+        "device": "camera",
+        "geoSource": "IMG_5744.JPG"
+      },
+      {
+        "fileName": "DSC04834.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04834_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04834_display.avif",
+        "lat": 32.110255555555554,
+        "lng": 118.74440833333334,
+        "takenAt": "2026-10-02T17:05:56",
+        "device": "camera",
+        "geoSource": "IMG_5747.HEIC"
+      },
+      {
+        "fileName": "DSC04835.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04835_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04835_display.avif",
+        "lat": 32.110255555555554,
+        "lng": 118.74440833333334,
+        "takenAt": "2026-10-02T17:06:00",
+        "device": "camera",
+        "geoSource": "IMG_5747.HEIC"
+      },
+      {
+        "fileName": "DSC04839.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04839_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04839_display.avif",
+        "lat": 32.11138611111111,
+        "lng": 118.74406388888889,
+        "takenAt": "2026-10-02T17:10:33",
+        "device": "camera",
+        "geoSource": "IMG_5758.HEIC"
+      },
+      {
+        "fileName": "DSC04840.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04840_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04840_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:15:36",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04843.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04843_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04843_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:19:09",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04847.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04847_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04847_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:23:03",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04850.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04850_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04850_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:23:11",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04851.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04851_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04851_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:26:48",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04855.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04855_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04855_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:27:08",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04857.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04857_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04857_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:27:11",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04860.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04860_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04860_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:27:17",
+        "device": "camera",
+        "geoSource": "IMG_5763.HEIC"
+      },
+      {
+        "fileName": "DSC04863.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04863_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04863_display.avif",
+        "lat": 32.11696111111111,
+        "lng": 118.74439166666667,
+        "takenAt": "2026-10-02T17:27:48",
+        "device": "camera",
+        "geoSource": "IMG_5785.HEIC"
+      },
+      {
+        "fileName": "DSC04864.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04864_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04864_display.avif",
+        "lat": 32.11696111111111,
+        "lng": 118.74439166666667,
+        "takenAt": "2026-10-02T17:34:03",
+        "device": "camera",
+        "geoSource": "IMG_5785.HEIC"
+      },
+      {
+        "fileName": "DSC04866.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04866_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04866_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:39:58",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04867.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04867_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04867_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:39:59",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04869.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04869_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04869_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:40:01",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04875.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04875_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04875_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:47:38",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04877.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04877_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04877_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:47:44",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04881.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04881_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04881_display.avif",
+        "lat": 32.11209166666667,
+        "lng": 118.74397222222223,
+        "takenAt": "2026-10-02T17:50:00",
+        "device": "camera",
+        "geoSource": "IMG_5787.HEIC"
+      },
+      {
+        "fileName": "DSC04883.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04883_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04883_display.avif",
+        "lat": 32.111694444444446,
+        "lng": 118.74437777777779,
+        "takenAt": "2026-10-02T17:51:05",
+        "device": "camera",
+        "geoSource": "IMG_5796.HEIC"
+      },
+      {
+        "fileName": "DSC04887.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04887_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04887_display.avif",
+        "lat": 32.111694444444446,
+        "lng": 118.74437777777779,
+        "takenAt": "2026-10-02T17:51:33",
+        "device": "camera",
+        "geoSource": "IMG_5796.HEIC"
+      },
+      {
+        "fileName": "DSC04899.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04899_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04899_display.avif",
+        "lat": 32.111694444444446,
+        "lng": 118.74437777777779,
+        "takenAt": "2026-10-02T17:55:33",
+        "device": "camera",
+        "geoSource": "IMG_5796.HEIC"
+      },
+      {
+        "fileName": "DSC04900.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04900_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04900_display.avif",
+        "lat": 32.111694444444446,
+        "lng": 118.74437777777779,
+        "takenAt": "2026-10-02T17:55:39",
+        "device": "camera",
+        "geoSource": "IMG_5796.HEIC"
+      },
+      {
+        "fileName": "DSC04904.JPG",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04904_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/DSC04904_display.avif",
+        "lat": 32.111694444444446,
+        "lng": 118.74437777777779,
+        "takenAt": "2026-10-02T17:56:09",
+        "device": "camera",
+        "geoSource": "IMG_5796.HEIC"
+      },
+      {
+        "fileName": "IMG_5740.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5740_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5740_display.avif",
+        "lat": 32.109541666666665,
+        "lng": 118.74548333333334,
+        "takenAt": "2026-10-02T16:58:02",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5741.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5741_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5741_display.avif",
+        "lat": 32.109611111111114,
+        "lng": 118.74529166666667,
+        "takenAt": "2026-10-02T16:58:18",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5758.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5758_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5758_display.avif",
+        "lat": 32.11138611111111,
+        "lng": 118.74406388888889,
+        "takenAt": "2026-10-02T17:08:45",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5759.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5759_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5759_display.avif",
+        "lat": 32.11133888888889,
+        "lng": 118.74388055555556,
+        "takenAt": "2026-10-02T17:12:54",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5760.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5760_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5760_display.avif",
+        "lat": 32.111533333333334,
+        "lng": 118.74390277777778,
+        "takenAt": "2026-10-02T17:14:07",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5762.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5762_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5762_display.avif",
+        "lat": 32.11143055555556,
+        "lng": 118.74388055555556,
+        "takenAt": "2026-10-02T17:14:09",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5763.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5763_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5763_display.avif",
+        "lat": 32.111672222222225,
+        "lng": 118.74366666666667,
+        "takenAt": "2026-10-02T17:15:43",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5764.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5764_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5764_display.avif",
+        "lat": 32.11168333333333,
+        "lng": 118.74363611111112,
+        "takenAt": "2026-10-02T17:20:24",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5766.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5766_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5766_display.avif",
+        "lat": 32.111644444444444,
+        "lng": 118.74363055555555,
+        "takenAt": "2026-10-02T17:22:29",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5774.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5774_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5774_display.avif",
+        "lat": 32.11165555555556,
+        "lng": 118.74361388888889,
+        "takenAt": "2026-10-02T17:22:33",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5785.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5785_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5785_display.avif",
+        "lat": 32.11696111111111,
+        "lng": 118.74439166666667,
+        "takenAt": "2026-10-02T17:39:09",
+        "device": "phone"
+      },
+      {
+        "fileName": "IMG_5797.HEIC",
+        "thumbnailLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5797_thumb.webp",
+        "displayLink": "/data/photos/南京长江大桥玻璃栈桥/IMG_5797_display.avif",
+        "lat": 32.111691666666665,
+        "lng": 118.74438611111111,
+        "takenAt": "2026-10-02T18:01:24",
+        "device": "phone"
+      }
+    ]
+  },
+  {
     "lat": 23.401172222222222,
     "lng": 113.3014361111111,
     "thumbnailLink": "/data/photos/广州市-白云机场/IMG_4847_thumb.webp",
@@ -2329,6 +2730,39 @@
         "lng": 116.20191111111112,
         "takenAt": "2025-08-30T14:05:33",
         "device": "phone"
+      }
+    ]
+  },
+  {
+    "lat": 26.884014,
+    "lng": 112.622009,
+    "thumbnailLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image2_thumb.webp",
+    "displayLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image2_display.avif",
+    "fileName": "2021022708_pdf-page1-image2.jpg",
+    "dirName": "衡阳市-湘江公铁大桥道口",
+    "description": "衡阳市-湘江公铁大桥道口",
+    "pinKind": "ref",
+    "photos": [
+      {
+        "fileName": "2021022708_pdf-page1-image2.jpg",
+        "thumbnailLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image2_thumb.webp",
+        "displayLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image2_display.avif",
+        "lat": 26.884014,
+        "lng": 112.622009
+      },
+      {
+        "fileName": "2021022708_pdf-page1-image8.jpg",
+        "thumbnailLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image8_thumb.webp",
+        "displayLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image8_display.avif",
+        "lat": 26.884014,
+        "lng": 112.622009
+      },
+      {
+        "fileName": "2021022708_pdf-page1-image9.jpg",
+        "thumbnailLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image9_thumb.webp",
+        "displayLink": "/data/photos/衡阳市-湘江公铁大桥道口/refs/2021022708_pdf-page1-image9_display.avif",
+        "lat": 26.884014,
+        "lng": 112.622009
       }
     ]
   },
