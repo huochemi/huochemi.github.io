@@ -351,6 +351,25 @@ du -sh .git                       # 期望 ~48 MB
      （= `photos/石景山南站/IMG_5036.jpeg`，3.1 MB）→ **HTTP 200，下载 4 484 880 B（base64）**
    ⇒ **任何人只要知道旧 SHA，现在仍能从公开仓拿到原始分辨率照片。**
 
+   **② 复查（2026-10-09 20:2x，定时任务，只读）—— 结论不变：GitHub 仍未 GC，旧对象仍可取回。**
+   判定规则：对照成功 + 目标成功 → 仍未 GC。全部为实测值：
+
+   | 检查 | 实测结果 |
+   | --- | --- |
+   | 对照 `git fetch --depth=1 origin a46ac7373d2dceadd95dbdb8a9d6ae8f1d073333`（新历史 root） | **成功**（→ `FETCH_HEAD`，`cat-file -t` = commit） |
+   | 目标旧 tip `git fetch --depth=1 origin fcf5e3530bfb03c8d9afefde4331508feba091c8` | **成功**（→ `FETCH_HEAD`；信息 "Add new photo and index file for 广州市-白云机场"，树 445 文件 / 原片 0） |
+   | 旧原片 blob `GET …/git/blobs/2707600a8c208520b7fae4dd6dc8e287574159e5` | **HTTP 200，4 484 880 B**（与 2026-10-06 逐字节相同） |
+   | 负对照① `git fetch … 0000000000000000000000000000000000000001` | **失败** `upload-pack: not our ref`（exit 128） |
+   | 负对照② `git fetch … deadbeef…` | **失败** `upload-pack: not our ref`（exit 128） |
+   | 负对照③ `GET …/git/blobs/0000…0001` | **HTTP 404** |
+   | 仓字段（仅参考，不可据此判断成败） | `size` = **52816**（≈51.6 MB）、`pushed_at` = `2026-10-07T15:40:35Z`、`has_pages` = true |
+
+   三条负对照均正确失败 ⇒ 测试方法成立，目标的"成功"非假阳性。
+   ⇒ **状态维持「已实现」，§7.1 残余风险不改为「已闭合」（GC 未发生）。**
+   注：`size` 已从 660 MB 降至 ≈51.6 MB，但该字段按既定口径仅作参考；本次结论完全由
+   fetch / blob 实测支撑，与 `size` 变化方向无关（如实记录）。
+   （2026-10-09 起本 plan 的 §7.1 由一次性定时复查任务继续跟踪，逐次追加。）
+
    本仓 PR = 0（无 `refs/pull/*`）、forks = 0，故 GitHub GC 覆盖后即不可达；**但 GC 无 SLA、
    不保证何时发生**。要「保证不可访问」有两条路：
    - **Support 工单**：附 `First Changed Commit = 29292e0f0434c9b96027b17cdd00236d5da065d0`，
