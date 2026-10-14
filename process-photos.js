@@ -1075,7 +1075,7 @@ function missingDescriptionResult(dirName, dirPath) {
     reason: 'index.json 缺少 "description"（或它不是字符串）',
     hint:
       '修正后重跑：npm run photos\n' +
-      `    做法：编辑 ${path.join(dirPath, 'index.json')}，` +
+      `做法：编辑 ${path.join(dirPath, 'index.json')}，` +
       '补上 "description"（可填空串 ""，也可填展示名）',
   };
 }
@@ -1152,9 +1152,9 @@ async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
       reason: `参考点位缺少可解析的 ${REFS_SUBDIR}/${REF_POINT_FILE}: ${err.message}`,
       hint:
         `参考点位（原图仓还没有照片的点位）必须自带一个点位坐标：${path.join(dataRefsDirPath, REF_POINT_FILE)}\n` +
-        '    内容形如 {"lng": 112.6, "lat": 26.8}，坐标口径 GCJ02\n' +
-        '    （高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，不要用 WGS84）\n' +
-        `    或整条命令重建：npm run new-place -- "${dirName}" --wish --coord "<lng,lat>"`,
+        '内容形如 {"lng": 112.6, "lat": 26.8}，坐标口径 GCJ02\n' +
+        '（高德坐标拾取器 https://lbs.amap.com/tools/picker 直接粘贴，不要用 WGS84）\n' +
+        `或整条命令重建：npm run new-place -- "${dirName}" --wish --coord "<lng,lat>"`,
     };
   }
   if (!Number.isFinite(point?.lng) || !Number.isFinite(point?.lat)) {
@@ -1163,7 +1163,7 @@ async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
       reason: `${REFS_SUBDIR}/${REF_POINT_FILE} 的 lng / lat 必须是数字`,
       hint:
         `修正后重跑：npm run photos\n` +
-        `    做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，` +
+        `做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，` +
         '写成 {"lng": 112.6, "lat": 26.8}——**不要写成字符串**（不做隐式转换）',
     };
   }
@@ -1194,10 +1194,10 @@ async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
           `${misplaced.length} 个图片文件`,
         hint:
           '参考图的源图与实拍原片走同一条入口（放原图仓），压缩与派生由管线负责：\n' +
-          `    mkdir -p "${originRefsDirPath}" && mv ` +
+          `mkdir -p "${originRefsDirPath}" && mv ` +
           misplaced.map((f) => `"${path.join(dataRefsDirPath, f)}"`).join(' ') +
           ` "${originRefsDirPath}/"\n` +
-          '    然后重跑：npm run photos',
+          '然后重跑：npm run photos',
       };
     }
     return {
@@ -1205,9 +1205,9 @@ async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
       reason: `${REFS_SUBDIR}/ 下没有图片文件`,
       hint:
         '参考点位至少要有一张参考图——它是地图上可点的"入口图"：\n' +
-        `    做法：把下载的图**原样**放进原图仓 ${originRefsDirPath}/（不压、不改名）\n` +
-        '    压缩与档位由 npm run photos 负责（与实拍照片同一条规则），跑完再提交\n' +
-        `    可选：在 ${path.join(dataRefsDirPath, REF_POINT_FILE)} 里用 "cover" 指定 marker 用哪张`,
+        `做法：把下载的图**原样**放进原图仓 ${originRefsDirPath}/（不压、不改名）\n` +
+        '压缩与档位由 npm run photos 负责（与实拍照片同一条规则），跑完再提交\n' +
+        `可选：在 ${path.join(dataRefsDirPath, REF_POINT_FILE)} 里用 "cover" 指定 marker 用哪张`,
     };
   }
 
@@ -1221,8 +1221,8 @@ async function preflightRefPlace(dirName, dirPath, originDirPath, indexConfig) {
         reason: `${REFS_SUBDIR}/${REF_POINT_FILE} 的 "cover" 不是参考图清单里的文件名`,
         hint:
           '修正后重跑：npm run photos\n' +
-          `    可选文件名：${refImages.join('、')}\n` +
-          `    做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，把 "cover" ` +
+          `可选文件名：${refImages.join('、')}\n` +
+          `做法：编辑 ${path.join(dataRefsDirPath, REF_POINT_FILE)}，把 "cover" ` +
           '改成其中之一（也可删掉该键，默认取字典序第一张）',
       };
     }
@@ -1276,8 +1276,8 @@ async function preflightDir(dirName) {
         reason: `缺少 index.json 或文件 JSON 格式不正确: ${err.message}`,
         hint:
           '修正 index.json 后重跑：npm run photos\n' +
-          '    新点位可用脚手架一次建好；不传 --cover 会列出该点位可选的文件名：\n' +
-          `    npm run new-place -- "${dirName}"`,
+          '新点位可用脚手架一次建好；不传 --cover 会列出该点位可选的文件名：\n' +
+          `npm run new-place -- "${dirName}"`,
       };
     }
 
@@ -1303,7 +1303,7 @@ async function preflightDir(dirName) {
         // 有 index_photo、原图仓却找不到媒体：两种情况，下一步不同，故 hint 要按情况给
         // （hint 必须自足是本项目纪律）。这里只**补充上下文**，不改变原判定与文案主体。
         const refsNote = (await pathExists(path.join(dirPath, REFS_SUBDIR)))
-          ? `\n    注意：该点位目录里还有 ${REFS_SUBDIR}/——若它其实还没去过（参考态），` +
+          ? `\n注意：该点位目录里还有 ${REFS_SUBDIR}/——若它其实还没去过（参考态），` +
             'index.json 里不该有 index_photo，删掉该键即可恢复参考态'
           : '';
         return originReadError
@@ -1398,20 +1398,20 @@ async function preflightDir(dirName) {
       if (refs.length === 1) {
         hint +=
           `\n或批量复制坐标（将 ${refs[0].file} 的坐标写入其余 ${missing.length} 张）：` +
-          `\n    npm run fix-gps:anchor -- "${dirName}" --ref ${refs[0].file} --all`;
+          `\nnpm run fix-gps:anchor -- "${dirName}" --ref ${refs[0].file} --all`;
       } else if (refs.length >= 2) {
         hint +=
           `\n或生成分组审阅页（${refs.length} 张锚点${describeAnchorSpread(refs)}，` +
           '页面定好分组后一次写入）：' +
-          `\n    npm run fix-gps:anchor -- "${dirName}" --review`;
+          `\nnpm run fix-gps:anchor -- "${dirName}" --review`;
       }
       // 有轨迹文件时把轨迹路顶到最前：轨迹只覆盖"按下记录"之后的时段，窗口外的
       // 照片仍需锚点路 —— 两条提示都给，谁适用由用户/执行结果决定，不互相取代
       if (trackFiles.length > 0) {
         hint =
           `该文件夹有轨迹文件（${trackFiles.join('、')}），优先用轨迹路补坐标：` +
-          `\n    npm run fix-gps:track -- "${dirName}"` +
-          '\n    （轨迹只覆盖录制时段，时间窗外的照片仍需下面的锚点路）\n' +
+          `\nnpm run fix-gps:track -- "${dirName}"` +
+          '\n（轨迹只覆盖录制时段，时间窗外的照片仍需下面的锚点路）\n' +
           hint;
       }
       return {
@@ -1852,13 +1852,23 @@ async function resolvePointDirs() {
   return [...new Set([...dataDirs, ...originDirs])].sort();
 }
 
-/** 打印未通过预检的文件夹清单（一行一个，附下一步命令） */
-function reportSkippedDirs(failed) {  console.log(
+/**
+ * 打印未通过预检的文件夹清单（一行一个，附下一步命令）
+ *
+ * **本函数是缩进的唯一负责处**：hint 只写内容、**不得自带缩进**，这里给它的每一行
+ * 统一加 4 个空格。从前续行的 4 个空格写在 hint 字符串里（首行却由这里加），缩进被
+ * 两处共管 ⇒ `或批量复制坐标（…）：` 那行漏写 4 空格，就掉回第 0 列、与上面的
+ * ⏭️ 标题同级，整个层级读不出来（用户 2026-10-14 提出；当日统一到这里）。
+ */
+function reportSkippedDirs(failed) {
+  console.log(
     color.yellow(`\n⏭️ ${failed.length} 个文件夹未通过预检，本轮不产出数据：`),
   );
   for (const { dirName, reason, hint } of failed) {
     console.log(`  ${dirName}：${reason}`);
-    if (hint) console.log(`    ${hint}`);
+    if (hint) {
+      for (const line of hint.split('\n')) console.log(`    ${line}`);
+    }
   }
 }
 
