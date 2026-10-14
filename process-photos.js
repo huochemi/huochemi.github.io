@@ -1390,7 +1390,11 @@ async function preflightDir(dirName) {
           image.meta.lng !== undefined &&
           classifyDevice(image.meta.make, image.meta.model) === 'phone',
       );
-      let hint = `补坐标后重跑：npm run fix-gps:anchor -- "${dirName}"`;
+      // 标签只说本步做什么，**不写"后重跑"**：本文件其余「…后重跑：」句型里冒号后恒为
+      // 重跑命令本身（`npm run photos`），此处冒号后是补坐标命令，套同一句型会被读成
+      // "跑这条命令就是重跑"（用户 2026-10-14 就此提出疑问）。重跑提示由 fix-gps 收尾的
+      // printSummary 单独打印，不在此处重复。
+      let hint = `补坐标：npm run fix-gps:anchor -- "${dirName}"`;
       if (refs.length === 1) {
         hint +=
           `\n或批量复制坐标（将 ${refs[0].file} 的坐标写入其余 ${missing.length} 张）：` +
